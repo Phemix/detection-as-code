@@ -1,0 +1,45 @@
+title: PsExec Lateral Movement via Admin Shares
+id: DET-00003
+type: detection
+status: experimental
+description: >
+  Detects lateral movement using PsExec or similar tools accessing administrative
+  shares (C$, ADMIN$, IPC$). Service installation on a remote host combined with
+  admin share access is a high-fidelity indicator of lateral movement activity.
+author: Detection Engineering Team
+date: 2024-01-15
+modified: 2024-01-15
+mitre:
+  - T1021.002
+  - T1570
+data_source:
+  - Sysmon EventID 1 (Process Creation)
+  - Windows Event Log Security 4688
+  - Windows Event Log System 7045 (Service Install)
+analytic_story:
+  - Lateral Movement
+  - Active Directory Attacks
+how_to_implement: >
+  Requires Sysmon process creation logging with full command line capture.
+  For best coverage combine with Windows Security Event 4624 (logon) and
+  7045 (service installation). Update the NOT Computer filter to reflect
+  your authorized jump host naming convention.
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=* source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" EventID=1
+  (
+    Image IN ("*\\psexec.exe","*\\psexec64.exe","*\\PsExec.exe")
+    OR (CommandLine="*\\C$*" OR CommandLine="*\\ADMIN$*" OR CommandLine="*\\IPC$*")
+  )
+  (CommandLine="*PSEXESVC*" OR CommandLine="* -s *" OR CommandLine="* -i *")
+  NOT Computer IN ("JUMPHOST*","BASTION*")
+  | table _time, Computer, User, Image, CommandLine, ParentImage
+  | sort -_time
+falsepositives:
+  - Authorized sysadmin activity from documented jump hosts — add to NOT Computer filter
+  - PAM solution managed sessions (CyberArk, Delinea) — filter by source host
+  - IT automation tools — validate against CMDB and add to exclusion list
+level: high

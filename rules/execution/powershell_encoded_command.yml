@@ -1,0 +1,47 @@
+title: PowerShell Encoded Command Execution
+id: DET-00002
+type: detection
+status: experimental
+description: >
+  Detects PowerShell execution with base64-encoded command flags (-EncodedCommand, -enc).
+  Attackers use encoding to obfuscate malicious payloads and bypass basic string-based
+  detection. High-confidence signal when launched from Office, scripting, or LOLBin parents.
+author: Detection Engineering Team
+date: 2024-01-15
+modified: 2024-01-15
+mitre:
+  - T1059.001
+  - T1027
+data_source:
+  - Sysmon EventID 1 (Process Creation)
+  - Windows Event Log Security 4688
+  - PowerShell Script Block Logging (EventID 4104)
+analytic_story:
+  - Malicious PowerShell
+  - Defense Evasion
+how_to_implement: >
+  Requires Sysmon process creation logging with full command line capture.
+  For higher fidelity, enable PowerShell Script Block Logging (EventID 4104)
+  via Group Policy. Index under source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational".
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=* source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" EventID=1
+  Image IN ("*\\powershell.exe","*\\pwsh.exe")
+  (CommandLine="* -EncodedCommand *" OR CommandLine="* -enc *" OR CommandLine="* -en *")
+  (
+    ParentImage IN (
+      "*\\winword.exe","*\\excel.exe","*\\outlook.exe",
+      "*\\mshta.exe","*\\wscript.exe","*\\cscript.exe","*\\regsvr32.exe"
+    )
+    OR NOT (CommandLine="*Microsoft.PowerShell.Commands*" OR CommandLine="*WindowsUpdateClient*")
+  )
+  | table _time, Computer, User, Image, CommandLine, ParentImage, ParentCommandLine
+  | sort -_time
+falsepositives:
+  - Legitimate automation scripts using encoded commands — document in exception list
+  - SCCM or Intune management tasks — filter by ParentImage
+  - Vendor tooling — baseline and add to SPL NOT filter
+level: high

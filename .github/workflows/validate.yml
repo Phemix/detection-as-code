@@ -1,0 +1,210 @@
+name: Detection-as-Code Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'rules/**'
+      - 'sigma_config.yml'
+      - 'scripts/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rules/**'
+      - 'sigma_config.yml'
+      - 'scripts/**'
+  workflow_dispatch:
+    inputs:
+      validate_all:
+        description: 'Validate all rules (not just changed)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate Rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Get changed rule files (PR only)
+        if: github.event_name == 'pull_request'
+        id: changed
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'rules/**/*.yml')
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Validate changed rules (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED="${{ steps.changed.outputs.files }}"
+          if [ -z "$CHANGED" ]; then echo "No rule files changed."; exit 0; fi
+          FAILED=0
+          while IFS= read -r file; do
+            if [ -n "$file" ] && [ -f "$file" ]; then
+              echo "Validating: $file"
+              python scripts/validate.py --file "$file" || FAILED=1
+            fi
+          done <<< "$CHANGED"
+          exit $FAILED
+      - name: Validate all rules (push to main or manual)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: python scripts/validate.py
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: validation_report.json
+          if-no-files-found: ignore
+
+  compile:
+    name: Compile to Splunk SPL
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Get changed rule files (PR only)
+        if: github.event_name == 'pull_request'
+        id: changed
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'rules/**/*.yml')
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Compile changed rules (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED="${{ steps.changed.outputs.files }}"
+          if [ -z "$CHANGED" ]; then echo "No rule files changed."; exit 0; fi
+          FAILED=0
+          while IFS= read -r file; do
+            if [ -n "$file" ] && [ -f "$file" ]; then
+              echo "Compiling: $file"
+              python scripts/compile.py --backend splunk --file "$(pwd)/$file" || FAILED=1
+            fi
+          done <<< "$CHANGED"
+          exit $FAILED
+      - name: Compile all rules (push to main or manual)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: python scripts/compile.py --backend splunk
+      - name: Upload compiled rules
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-splunk
+          path: compiled/splunk/
+          if-no-files-found: ignore
+
+  inventory:
+    name: Update Rule Inventory
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Generate inventory
+        run: |
+          python scripts/inventory.py --output RULES.md
+          python scripts/inventory.py --json --output rules_manifest.json
+      - name: Commit inventory
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RULES.md rules_manifest.json
+          git diff --staged --quiet || git commit -m "chore: update rule inventory [skip ci]"
+          git push
+
+  pr-comment:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [validate, compile]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Get changed rules
+        id: changed
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'rules/**/*.yml')
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Generate PR comment
+        run: |
+          python - <<'PYEOF'
+          import yaml, re
+          from pathlib import Path
+          changed = """${{ steps.changed.outputs.files }}""".strip().split('\n')
+          changed = [f for f in changed if f.strip()]
+          lines = ["## Detection Rule Review\n"]
+          lines.append(f"**{len(changed)} rule(s) changed in this PR**\n")
+          if changed:
+              lines.append("| ID | Title | Type | Level | MITRE |")
+              lines.append("|----|-------|------|-------|-------|")
+              for f in changed:
+                  p = Path(f)
+                  if p.exists() and p.suffix == '.yml':
+                      try:
+                          rule = yaml.safe_load(p.read_text())
+                          rid = rule.get('id', '—')
+                          title = rule.get('title') or rule.get('name', '—')
+                          level = rule.get('level') or rule.get('severity', '—')
+                          rtype = rule.get('type', 'detection')
+                          mitre_field = rule.get('mitre', [])
+                          mitre = ', '.join(str(t) for t in mitre_field) if mitre_field else '—'
+                          lines.append(f"| `{rid}` | {title} | {rtype} | {level} | {mitre} |")
+                      except Exception:
+                          lines.append(f"| — | `{p.name}` | (parse error) | — | — |")
+          lines.append("\n> Validation and compilation ran against changed rules only.")
+          lines.append("> Full validation runs on merge to main.")
+          Path('pr_comment.txt').write_text('\n'.join(lines))
+          PYEOF
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('pr_comment.txt', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

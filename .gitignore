@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+compiled/
+validation_report.json
+rules_manifest.json
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.env
+.env*
+secrets/

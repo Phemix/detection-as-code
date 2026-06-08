@@ -1,0 +1,44 @@
+# sigma_config.yml
+# Detection-as-Code pipeline configuration
+# Schema: SSC-style YAML with raw SPL in 'search' block
+
+backends:
+  splunk:
+    output_dir: compiled/splunk
+    extension: .spl
+
+validation:
+  required_fields:
+    - title
+    - id
+    - status
+    - description
+    - author
+    - date
+    - level
+    - falsepositives
+
+  allowed_statuses:
+    - stable
+    - experimental
+    - test
+    - deprecated
+
+  allowed_levels:
+    - critical
+    - high
+    - medium
+    - low
+    - informational
+
+  min_description_length: 30
+
+rule_dirs:
+  - rules/credential_access
+  - rules/execution
+  - rules/lateral_movement
+  - rules/persistence
+  - rules/defense_evasion
+  - rules/exfiltration
+  - rules/discovery
+  - rules/command_and_control

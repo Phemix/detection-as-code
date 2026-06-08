@@ -1,0 +1,40 @@
+title: LSASS Memory Dump via ProcDump or comsvcs.dll
+id: DET-00001
+type: detection
+status: experimental
+description: >
+  Detects attempts to dump LSASS memory using ProcDump with the -ma flag
+  or via comsvcs.dll MiniDump export. Both are common credential access
+  techniques used post-compromise to harvest plaintext credentials or NTLM hashes.
+author: Detection Engineering Team
+date: 2024-01-15
+modified: 2024-01-15
+mitre:
+  - T1003.001
+data_source:
+  - Sysmon EventID 1 (Process Creation)
+  - Windows Event Log Security 4688
+analytic_story:
+  - Credential Access
+  - Post-Exploitation
+how_to_implement: >
+  Requires Sysmon deployed with a configuration that captures process creation
+  events (Event ID 1) including full command line logging. Index logs under
+  source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational".
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=* source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" EventID=1
+  (
+    (Image IN ("*\\procdump.exe","*\\procdump64.exe") CommandLine="*lsass*" CommandLine="*-ma*")
+    OR (Image="*\\rundll32.exe" CommandLine="*comsvcs*" CommandLine="*MiniDump*")
+  )
+  NOT (User="*SYSTEM*" ParentImage="*\\mmc.exe")
+  | table _time, Computer, User, Image, CommandLine, ParentImage, ParentCommandLine
+  | sort -_time
+falsepositives:
+  - Legitimate memory diagnostic tools in authorized change windows
+  - Vendor-approved debugging sessions with documented approval ticket
+level: critical
