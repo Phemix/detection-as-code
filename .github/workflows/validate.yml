@@ -19,7 +19,7 @@ on:
       validate_all:
         description: 'Validate all rules (not just changed)'
         required: false
-        default: 'true'
+        default: 'false'
 
 permissions:
   contents: write
