@@ -1,0 +1,83 @@
+{
+  "total": 3,
+  "by_level": {
+    "critical": 1,
+    "high": 2
+  },
+  "by_status": {
+    "experimental": 3
+  },
+  "by_tactic": {
+    "credential_access": 1,
+    "execution": 1,
+    "lateral_movement": 1
+  },
+  "by_type": {
+    "detection": 3
+  },
+  "mitre_coverage": [
+    "T1003.001",
+    "T1021.002",
+    "T1027",
+    "T1059.001",
+    "T1570"
+  ],
+  "rules": [
+    {
+      "title": "LSASS Memory Dump via ProcDump or comsvcs.dll",
+      "id": "DET-00001",
+      "type": "detection",
+      "status": "experimental",
+      "level": "critical",
+      "tactic": "credential_access",
+      "techniques": [
+        "T1003.001"
+      ],
+      "analytic_story": [
+        "Credential Access",
+        "Post-Exploitation"
+      ],
+      "author": "Detection Engineering Team",
+      "date": "2024-01-15",
+      "path": "rules/credential_access/lsass_memory_dump_procdump.yml"
+    },
+    {
+      "title": "PowerShell Encoded Command Execution",
+      "id": "DET-00002",
+      "type": "detection",
+      "status": "experimental",
+      "level": "high",
+      "tactic": "execution",
+      "techniques": [
+        "T1027",
+        "T1059.001"
+      ],
+      "analytic_story": [
+        "Malicious PowerShell",
+        "Defense Evasion"
+      ],
+      "author": "Detection Engineering Team",
+      "date": "2024-01-15",
+      "path": "rules/execution/powershell_encoded_command.yml"
+    },
+    {
+      "title": "PsExec Lateral Movement via Admin Shares",
+      "id": "DET-00003",
+      "type": "detection",
+      "status": "experimental",
+      "level": "high",
+      "tactic": "lateral_movement",
+      "techniques": [
+        "T1021.002",
+        "T1570"
+      ],
+      "analytic_story": [
+        "Lateral Movement",
+        "Active Directory Attacks"
+      ],
+      "author": "Detection Engineering Team",
+      "date": "2024-01-15",
+      "path": "rules/lateral_movement/psexec_admin_shares.yml"
+    }
+  ]
+}
