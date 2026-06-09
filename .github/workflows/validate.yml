@@ -233,10 +233,11 @@ jobs:
       - name: Deploy to Splunk
         env:
           SPLUNK_PASSWORD: ${{ secrets.SPLUNK_PASSWORD }}
-          SPLUNK_HOST: localhost
-          SPLUNK_PORT: "8089"
-          SPLUNK_USER: admin
-          SPLUNK_APP: search
         run: |
           source .venv/bin/activate
-          python scripts/deploy_splunk.py
+          python scripts/deploy_splunk.py \
+            --host localhost \
+            --port 8089 \
+            --user admin \
+            --password "$SPLUNK_PASSWORD" \
+            --app search
