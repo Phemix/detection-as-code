@@ -268,7 +268,10 @@ def main():
     parser.add_argument("--report", action="store_true", help="Write JSON report to disk")
     args = parser.parse_args()
 
+
     config = load_config()
+    if args.file:
+        args.file = args.file.resolve()
     paths = collect_rules(config, args.file)
 
     if not paths:
