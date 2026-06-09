@@ -127,6 +127,7 @@ def compile_splunk(rule: dict, path: Path, output_dir: Path, dry_run: bool = Fal
 
 
 def collect_rules(config: dict, single_file: Path | None = None) -> list[Path]:
+    """rule collect"""
     if single_file:
         return [single_file]
     paths = []
