@@ -215,6 +215,8 @@ jobs:
     runs-on: self-hosted
     needs: [validate, compile]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      AGENT_TOOLSDIRECTORY: /Users/Oyinkansola-Olufemi/hostedtoolcache
 
     steps:
       - uses: actions/checkout@v4
