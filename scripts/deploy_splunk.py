@@ -21,7 +21,6 @@ Environment variables (or pass as args):
 
 import argparse
 import os
-import re
 import sys
 import urllib.request
 import urllib.parse
@@ -40,7 +39,6 @@ ANSI_YELLOW = "\033[33m"
 ANSI_RESET = "\033[0m"
 ANSI_BOLD = "\033[1m"
 
-# Disable SSL verification for local dev instances
 SSL_CONTEXT = ssl.create_default_context()
 SSL_CONTEXT.check_hostname = False
 SSL_CONTEXT.verify_mode = ssl.CERT_NONE
@@ -66,14 +64,17 @@ def load_spl(spl_path: Path) -> str | None:
         return None
 
 
-def get_search(rule: dict) -> str:
-    search = rule.get("search", "")
-    if search:
-        return str(search).strip()
-    detection = rule.get("detection", {})
-    if isinstance(detection, dict):
-        return str(detection.get("raw_query", "")).strip()
-    return ""
+def strip_comments(spl: str) -> str:
+    """
+    Remove | comment lines from compiled SPL before deploying to Splunk.
+    The comment header is useful for humans reading .spl files but
+    Splunk does not recognize | comment as a valid search command
+    in all configurations.
+    """
+    lines = spl.split('\n')
+    clean = [line for line in lines if not line.strip().startswith('| comment')]
+    clean = [line for line in clean if line.strip()]
+    return '\n'.join(clean)
 
 
 def get_schedule(rule: dict) -> tuple[str, str, str]:
@@ -99,7 +100,6 @@ def splunk_request(
     """Make a request to the Splunk REST API."""
     url = f"https://{host}:{port}{endpoint}?output_mode=json"
 
-    # Basic auth
     import base64
     credentials = base64.b64encode(f"{user}:{password}".encode()).decode()
     headers = {
@@ -108,7 +108,6 @@ def splunk_request(
     }
 
     body = urllib.parse.urlencode(data).encode() if data else None
-
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
 
     try:
@@ -118,10 +117,10 @@ def splunk_request(
     except urllib.error.HTTPError as e:
         import json
         try:
-            body = json.loads(e.read().decode())
+            err_body = json.loads(e.read().decode())
         except Exception:
-            body = {"messages": [{"text": str(e)}]}
-        return e.code, body
+            err_body = {"messages": [{"text": str(e)}]}
+        return e.code, err_body
 
 
 def search_exists(host, port, user, password, app, search_name) -> bool:
@@ -147,8 +146,6 @@ def deploy_rule(
     rule_id = str(rule.get("id", ""))
     level = rule.get("level") or rule.get("severity", "unknown")
     cron, earliest, latest = get_schedule(rule)
-
-    # Sanitize search name — Splunk doesn't allow some special chars
     search_name = f"[DaC] {title} ({rule_id})"
 
     if dry_run:
@@ -157,8 +154,10 @@ def deploy_rule(
             f"          Schedule: {cron}  earliest: {earliest}  latest: {latest}"
         )
 
+    # Strip | comment lines — not valid SPL in all Splunk configurations
+    spl_content = strip_comments(spl_content)
+
     exists = search_exists(host, port, user, password, app, search_name)
-    method = "POST"
 
     if exists:
         endpoint = f"/servicesNS/{user}/{app}/saved/searches/{urllib.parse.quote(search_name)}"
@@ -175,12 +174,11 @@ def deploy_rule(
         "disabled": "0",
         "description": rule.get("description", ""),
         "alert.severity": _map_severity(level),
-        # Custom fields for tracking
         "request.ui_dispatch_app": app,
         "request.ui_dispatch_view": "search",
     }
 
-    status, response = splunk_request(host, port, user, password, method, endpoint, data)
+    status, response = splunk_request(host, port, user, password, "POST", endpoint, data)
 
     if status in (200, 201):
         action = "updated" if exists else "created"
@@ -247,7 +245,7 @@ def collect_rule_pairs(config: dict, single_file: Path | None = None) -> list[tu
             return [(single_file, spl_path)]
         else:
             print(f"{ANSI_RED}No compiled SPL found for {single_file.name}{ANSI_RESET}")
-            print(f"Run 'make compile' first.")
+            print("Run 'make compile' first.")
             return []
 
     pairs = []
