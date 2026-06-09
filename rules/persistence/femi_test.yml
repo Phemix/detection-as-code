@@ -1,0 +1,30 @@
+title: Femi Test
+id: DET-00005
+type: hunting
+status: experimental
+description: >
+  TODO: Describe what this rule detects and why it indicates malicious activity.
+  Include context about the attacker technique, impacted systems, and signal fidelity.
+author: Detection Engineering Team
+date: 2026-06-09
+modified: 2026-06-09
+mitre:
+  - T1059.001
+data_source:
+  - Sysmon EventID 1 (Process Creation)
+analytic_story:
+  - TODO: Add analytic story name
+how_to_implement: >
+  TODO: Describe required data sources, configurations, and index setup.
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=* EventID=1
+  Image="*\\certutil.exe" CommandLine="*urlcache*"
+  | table _time, Computer, User, Image, CommandLine
+  | sort -_time
+falsepositives:
+  - TODO: Document known false positive scenarios
+level: low
