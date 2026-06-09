@@ -215,22 +215,15 @@ jobs:
     runs-on: self-hosted
     needs: [validate, compile]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    env:
-      AGENT_TOOLSDIRECTORY: /Users/Oyinkansola-Olufemi/hostedtoolcache
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip3 install -r requirements.txt
 
       - name: Compile rules
-        run: python scripts/compile.py --backend splunk
+        run: python3 scripts/compile.py --backend splunk
 
       - name: Deploy to Splunk
         env:
@@ -239,4 +232,4 @@ jobs:
           SPLUNK_PORT: "8089"
           SPLUNK_USER: admin
           SPLUNK_APP: search
-        run: python scripts/deploy_splunk.py
+        run: python3 scripts/deploy_splunk.py
