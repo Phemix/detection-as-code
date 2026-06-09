@@ -85,7 +85,7 @@ jobs:
           python-version: '3.11'
         
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements.txt
       - name: Get changed rule files (PR only)
         if: github.event_name == 'pull_request'
         id: changed
@@ -132,7 +132,7 @@ jobs:
           python-version: '3.11'
          
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements.txt
       - name: Generate inventory
         run: |
           python scripts/inventory.py --output RULES.md
@@ -158,7 +158,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements.txt
       - name: Get changed rules
         id: changed
         run: |
