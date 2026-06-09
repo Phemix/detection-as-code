@@ -219,11 +219,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: pip3 install -r requirements.txt
+      - name: Set up venv and install dependencies
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
 
       - name: Compile rules
-        run: python3 scripts/compile.py --backend splunk
+        run: |
+          source .venv/bin/activate
+          python scripts/compile.py --backend splunk
 
       - name: Deploy to Splunk
         env:
@@ -232,4 +237,6 @@ jobs:
           SPLUNK_PORT: "8089"
           SPLUNK_USER: admin
           SPLUNK_APP: search
-        run: python3 scripts/deploy_splunk.py
+        run: |
+          source .venv/bin/activate
+          python scripts/deploy_splunk.py
