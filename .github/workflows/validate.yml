@@ -209,3 +209,32 @@ jobs:
               repo: context.repo.repo,
               body: body
             });
+
+  deploy:
+    name: Deploy to Splunk
+    runs-on: self-hosted
+    needs: [validate, compile]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile rules
+        run: python scripts/compile.py --backend splunk
+
+      - name: Deploy to Splunk
+        env:
+          SPLUNK_PASSWORD: ${{ secrets.SPLUNK_PASSWORD }}
+          SPLUNK_HOST: localhost
+          SPLUNK_PORT: "8089"
+          SPLUNK_USER: admin
+          SPLUNK_APP: search
+        run: python scripts/deploy_splunk.py
