@@ -1,0 +1,46 @@
+[
+  {
+    "description": "Encoded PowerShell launched from Outlook (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQ==",
+      "User": "CORP\\jdoe",
+      "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE",
+      "Computer": "WORKSTATION-01"
+    }
+  },
+  {
+    "description": "Encoded PowerShell from wscript (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell -EncodedCommand aQBlAHgAIAAoAGkAdwByACAAaAB0AHQAcAA=",
+      "User": "CORP\\victim",
+      "ParentImage": "C:\\Windows\\System32\\wscript.exe",
+      "Computer": "WORKSTATION-02"
+    }
+  },
+  {
+    "description": "Legitimate SCCM encoded command (filtered — should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -enc WindowsUpdateClient -noninteractive",
+      "User": "NT AUTHORITY\\SYSTEM",
+      "ParentImage": "C:\\Windows\\CCM\\CcmExec.exe",
+      "Computer": "WORKSTATION-03"
+    }
+  },
+  {
+    "description": "PowerShell without encoding flag (should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -NoProfile -NonInteractive Get-Process",
+      "User": "CORP\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-04"
+    }
+  }
+]
