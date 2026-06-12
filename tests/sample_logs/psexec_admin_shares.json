@@ -1,0 +1,46 @@
+[
+  {
+    "description": "PsExec with PSEXESVC and admin share (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\Temp\\psexec.exe",
+      "CommandLine": "psexec.exe \\\\TARGET-HOST\\C$ -s cmd.exe PSEXESVC",
+      "User": "CORP\\attacker",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "SOURCE-HOST"
+    }
+  },
+  {
+    "description": "PsExec with -i flag and IPC$ share (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Tools\\PsExec.exe",
+      "CommandLine": "PsExec.exe -i \\\\TARGET-HOST\\IPC$ cmd.exe",
+      "User": "CORP\\attacker",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "SOURCE-HOST"
+    }
+  },
+  {
+    "description": "PsExec from authorized jump host (filtered — should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Tools\\psexec.exe",
+      "CommandLine": "psexec.exe \\\\TARGET-HOST -s cmd.exe PSEXESVC",
+      "User": "CORP\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "JUMPHOST-01"
+    }
+  },
+  {
+    "description": "Regular process with no admin share or PSEXESVC (should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Windows\\System32\\cmd.exe",
+      "CommandLine": "cmd.exe /c dir C:\\Users",
+      "User": "CORP\\jdoe",
+      "ParentImage": "C:\\Windows\\explorer.exe",
+      "Computer": "WORKSTATION-01"
+    }
+  }
+]
