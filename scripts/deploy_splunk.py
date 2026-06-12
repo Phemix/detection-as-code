@@ -129,7 +129,6 @@ def search_exists(host, port, user, password, app, search_name) -> bool:
     status, _ = splunk_request(host, port, user, password, "GET", endpoint)
     return status == 200
 
-
 def deploy_rule(
     rule: dict,
     spl_content: str,
@@ -154,20 +153,10 @@ def deploy_rule(
             f"          Schedule: {cron}  earliest: {earliest}  latest: {latest}"
         )
 
-    # Strip | comment lines — not valid SPL in all Splunk configurations
+    # Strip | comment lines before deploying
     spl_content = strip_comments(spl_content)
 
-    exists = search_exists(host, port, user, password, app, search_name)
-    
-    if exists:
-        # Update existing — POST to the named search endpoint
-        endpoint = f"/servicesNS/{user}/{app}/saved/searches/{urllib.parse.quote(search_name)}"
-        data.pop("name", None)  # name not needed on update
-    else:
-        # Create new
-        endpoint = f"/servicesNS/{user}/{app}/saved/searches"
-    
-
+    # Build data dict first
     data = {
         "name": search_name,
         "search": spl_content,
@@ -182,6 +171,17 @@ def deploy_rule(
         "request.ui_dispatch_view": "search",
     }
 
+    # Determine endpoint based on whether search already exists
+    exists = search_exists(host, port, user, password, app, search_name)
+
+    if exists:
+        # Update existing search — POST to named endpoint, name not needed
+        endpoint = f"/servicesNS/{user}/{app}/saved/searches/{urllib.parse.quote(search_name)}"
+        data.pop("name", None)
+    else:
+        # Create new search
+        endpoint = f"/servicesNS/{user}/{app}/saved/searches"
+
     status, response = splunk_request(host, port, user, password, "POST", endpoint, data)
 
     if status in (200, 201):
@@ -191,8 +191,7 @@ def deploy_rule(
         messages = response.get("messages", [])
         err = messages[0].get("text", "Unknown error") if messages else str(response)
         return False, f"Failed ({status}): {err}"
-
-
+    
 def delete_rule(
     rule: dict,
     host: str,
