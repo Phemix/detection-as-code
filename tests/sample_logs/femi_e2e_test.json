@@ -1,0 +1,46 @@
+[
+  {
+    "description": "net.exe user enumeration (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\System32\\net.exe",
+      "CommandLine": "net user /domain",
+      "User": "CORP\\jdoe",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-01"
+    }
+  },
+  {
+    "description": "net1.exe localgroup enumeration (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\System32\\net1.exe",
+      "CommandLine": "net1 localgroup administrators",
+      "User": "CORP\\attacker",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-02"
+    }
+  },
+  {
+    "description": "SYSTEM account running net.exe (filtered — should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Windows\\System32\\net.exe",
+      "CommandLine": "net user /domain",
+      "User": "NT AUTHORITY\\SYSTEM",
+      "ParentImage": "C:\\Windows\\System32\\services.exe",
+      "Computer": "WORKSTATION-03"
+    }
+  },
+  {
+    "description": "net.exe used for non-enumeration purpose (should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Windows\\System32\\net.exe",
+      "CommandLine": "net start",
+      "User": "CORP\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-04"
+    }
+  }
+]
