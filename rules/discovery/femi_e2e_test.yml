@@ -1,0 +1,31 @@
+title: Femi E2E Test
+id: DET-00006
+type: hunting
+status: experimental
+description: >
+  This rule detects the use of the net.exe and net1.exe tools to enumerate user accounts and groups on a Windows system. This activity is often associated with reconnaissance efforts by attackers seeking to gather information about the target environment.
+author: Detection Engineering Team
+date: 2026-06-12
+modified: 2026-06-12
+mitre:
+  - T1065.003
+data_source:
+  - Sysmon EventID 1 (Process Creation)
+analytic_story:
+  - TODO: Add analytic story name
+how_to_implement: >
+  Ensure Sysmon Process Create (EventID 1) events are being collected and indexed with full CommandLine, Image, ParentImage and User fields available (e.g., source=XmlWinEventLog:Microsoft-Windows-Sysmon/Operational or index=winevent); configure host agents/forwarders to preserve command-line arguments and map fields consistently so the rule can reliably search these events.
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=* source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" EventID=1
+  Image IN ("*\\net.exe","*\\net1.exe")
+  CommandLine IN ("* user *","* localgroup *","* group *","* accounts *")
+  NOT (User="*SYSTEM*")
+  | table _time, Computer, User, Image, CommandLine, ParentImage
+  | sort -_time
+falsepositives:
+  - Legitimate administrative activity (e.g., domain admins, helpdesk, or scheduled management tasks using net.exe/net1.exe); correlate with known admin accounts, maintenance windows, or inventory/endpoint management tools to reduce false positives.
+level: medium
