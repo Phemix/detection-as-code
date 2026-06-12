@@ -1,0 +1,46 @@
+[
+  {
+    "description": "ProcDump targeting lsass with -ma flag (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\Temp\\procdump64.exe",
+      "CommandLine": "procdump64.exe -ma lsass.exe lsass.dmp",
+      "User": "CORP\\jdoe",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-01"
+    }
+  },
+  {
+    "description": "comsvcs.dll MiniDump via rundll32 (should fire)",
+    "expected_match": true,
+    "event": {
+      "Image": "C:\\Windows\\System32\\rundll32.exe",
+      "CommandLine": "rundll32.exe C:\\Windows\\System32\\comsvcs.dll MiniDump 640 lsass.dmp full",
+      "User": "CORP\\attacker",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-02"
+    }
+  },
+  {
+    "description": "ProcDump on non-lsass process (should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Tools\\procdump64.exe",
+      "CommandLine": "procdump64.exe -ma notepad.exe notepad.dmp",
+      "User": "CORP\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Computer": "WORKSTATION-03"
+    }
+  },
+  {
+    "description": "Legitimate diagnostic via SYSTEM from mmc.exe (filtered — should NOT fire)",
+    "expected_match": false,
+    "event": {
+      "Image": "C:\\Tools\\procdump64.exe",
+      "CommandLine": "procdump64.exe -ma lsass.exe debug.dmp",
+      "User": "NT AUTHORITY\\SYSTEM",
+      "ParentImage": "C:\\Windows\\System32\\mmc.exe",
+      "Computer": "WORKSTATION-04"
+    }
+  }
+]
