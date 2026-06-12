@@ -1,28 +1,31 @@
 {
-  "total": 4,
+  "total": 5,
   "by_level": {
     "critical": 1,
     "high": 2,
-    "low": 1
+    "low": 1,
+    "medium": 1
   },
   "by_status": {
-    "experimental": 4
+    "experimental": 5
   },
   "by_tactic": {
     "credential_access": 1,
     "execution": 1,
     "lateral_movement": 1,
-    "persistence": 1
+    "persistence": 1,
+    "discovery": 1
   },
   "by_type": {
     "detection": 3,
-    "hunting": 1
+    "hunting": 2
   },
   "mitre_coverage": [
     "T1003.001",
     "T1021.002",
     "T1027",
     "T1059.001",
+    "T1065.003",
     "T1570"
   ],
   "rules": [
@@ -100,6 +103,25 @@
       "author": "Detection Engineering Team",
       "date": "2026-06-09",
       "path": "rules/persistence/femi_test.yml"
+    },
+    {
+      "title": "Femi E2E Test",
+      "id": "DET-00006",
+      "type": "hunting",
+      "status": "experimental",
+      "level": "medium",
+      "tactic": "discovery",
+      "techniques": [
+        "T1065.003"
+      ],
+      "analytic_story": [
+        {
+          "TODO": "Add analytic story name"
+        }
+      ],
+      "author": "Detection Engineering Team",
+      "date": "2026-06-12",
+      "path": "rules/discovery/femi_e2e_test.yml"
     }
   ]
 }
