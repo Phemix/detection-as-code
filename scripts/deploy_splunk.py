@@ -158,11 +158,15 @@ def deploy_rule(
     spl_content = strip_comments(spl_content)
 
     exists = search_exists(host, port, user, password, app, search_name)
-
+    
     if exists:
+        # Update existing — POST to the named search endpoint
         endpoint = f"/servicesNS/{user}/{app}/saved/searches/{urllib.parse.quote(search_name)}"
+        data.pop("name", None)  # name not needed on update
     else:
+        # Create new
         endpoint = f"/servicesNS/{user}/{app}/saved/searches"
+    
 
     data = {
         "name": search_name,
