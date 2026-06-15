@@ -58,101 +58,164 @@ def load_test_cases(rule_stem: str) -> list[dict]:
 
 
 # ── SPL Approximation Matcher ─────────────────────────────────────────────
-# Supports the most common SPL field matching patterns used in raw_query rules.
-# This is intentionally simplified — it catches logic errors, not SPL syntax errors.
 
 def normalize(val: str) -> str:
-    """Lowercase and strip for case-insensitive matching."""
     return str(val).lower().strip()
 
 
 def match_wildcard(event_val: str, pattern: str) -> bool:
-    """Match a SPL wildcard pattern (* = any chars) against an event value."""
     ev = normalize(event_val)
     pat = normalize(pattern)
-
+    # Normalize backslash sequences to single backslash
+    # YAML double-escapes Windows paths (\\mmc.exe) but events have single (\mmc.exe)
+    pat = re.sub(r'\\+', '\\\\', pat)
+    ev = re.sub(r'\\+', '\\\\', ev)
     if pat == "*":
         return True
-
-    # Convert SPL wildcard to regex
     regex = re.escape(pat).replace(r"\*", ".*")
     return bool(re.search(f"^{regex}$", ev))
 
 
 def field_matches(event: dict, field: str, pattern: str) -> bool:
-    """Check if a single field=pattern condition matches the event."""
-    val = event.get(field, "")
-    if val is None:
-        val = ""
+    val = event.get(field, "") or ""
     return match_wildcard(str(val), pattern)
 
 
-def parse_spl_conditions(search: str) -> list[dict]:
+def check_not_conditions(search: str, event: dict) -> bool:
     """
-    Parse SPL field=value conditions from a search string.
-    Returns a list of condition dicts with type and field/value info.
+    Returns True if the event passes all NOT filters (i.e. should not be excluded).
+    Returns False if any NOT condition matches (event should be excluded).
 
-    Supports:
-      field="value"
-      field="*wildcard*"
-      NOT (field="value")
-      field IN ("val1","val2")
-      (condition1 AND condition2)
-      condition1 OR condition2
+    Handles:
+      NOT (field="value" field2="value2")  — all fields in block must match to exclude
+      NOT field IN ("val1","val2")          — any value match excludes
+      NOT (field IN ("val1","val2"))        — same
     """
-    conditions = []
-
-    # Extract field IN (...) patterns
-    in_pattern = re.finditer(
-        r'(\w+)\s+IN\s+\(([^)]+)\)',
-        search,
-        re.IGNORECASE
-    )
-    for m in in_pattern:
+    # NOT field IN (...)
+    for m in re.finditer(r'NOT\s+(\w+)\s+IN\s+\(([^)]+)\)', search, re.IGNORECASE):
         field = m.group(1)
         values = [v.strip().strip('"\'') for v in m.group(2).split(',')]
-        conditions.append({"type": "in", "field": field, "values": values})
+        event_val = str(event.get(field, "") or "")
+        if any(match_wildcard(event_val, v) for v in values):
+            return False  # excluded
 
-    # Extract NOT (field="value") patterns
-    not_pattern = re.finditer(
-        r'NOT\s+\(([^)]+)\)',
-        search,
-        re.IGNORECASE
-    )
-    for m in not_pattern:
+    # NOT (...) blocks
+    for m in re.finditer(r'NOT\s*\(([^)]+)\)', search, re.IGNORECASE):
         inner = m.group(1)
-        inner_conditions = _parse_field_equals(inner)
-        for ic in inner_conditions:
-            ic["negated"] = True
-            conditions.append(ic)
+        # Check if inner is an IN expression
+        in_m = re.match(r'(\w+)\s+IN\s+\(([^)]+)\)', inner.strip(), re.IGNORECASE)
+        if in_m:
+            field = in_m.group(1)
+            values = [v.strip().strip('"\'') for v in in_m.group(2).split(',')]
+            event_val = str(event.get(field, "") or "")
+            if any(match_wildcard(event_val, v) for v in values):
+                return False
+        else:
+            # field="value" pairs — ALL must match to trigger exclusion
+            pairs = re.findall(r'(\w+)=["\']([^"\']*)["\']', inner)
+            if pairs and all(field_matches(event, f, v) for f, v in pairs):
+                return False
 
-    # Extract field="value" patterns (not already in NOT blocks)
-    # Remove NOT blocks first to avoid double-matching
-    search_clean = re.sub(r'NOT\s*\([^)]+\)', '', search, flags=re.IGNORECASE)
-    search_clean = re.sub(r'\w+\s+IN\s*\([^)]+\)', '', search_clean, flags=re.IGNORECASE)
-    conditions += _parse_field_equals(search_clean)
-
-    return conditions
+    return True  # not excluded
 
 
-def _parse_field_equals(text: str) -> list[dict]:
-    """Extract field="value" pairs from text."""
-    conditions = []
-    pattern = re.finditer(r'(\w+)=["\']([^"\']*)["\']', text)
-    for m in pattern:
-        conditions.append({
-            "type": "equals",
-            "field": m.group(1),
-            "value": m.group(2),
-            "negated": False
-        })
-    return conditions
+def check_positive_conditions(search: str, event: dict) -> bool:
+    """
+    Returns True if the event matches the positive detection logic.
+
+    Strategy: remove NOT blocks, then evaluate remaining conditions.
+    Parenthesized groups connected by OR — any group matching is sufficient.
+    Within a group, multiple conditions on the same field are AND-ed.
+    Across fields within a group, conditions are OR-ed.
+    """
+    # Strip NOT blocks and pipe commands
+    clean = re.sub(r'NOT\s+\w+\s+IN\s*\([^)]+\)', '', search, flags=re.IGNORECASE)
+    clean = re.sub(r'NOT\s*\([^)]+\)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\|.*', '', clean, flags=re.DOTALL)  # strip pipe commands
+    clean = re.sub(r'index\s*=\s*\S+', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'source\s*=\s*"[^"]*"', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'EventID\s*=\s*\d+', '', clean, flags=re.IGNORECASE)
+
+    # Extract parenthesized OR groups at the top level
+    # Try matching each paren group as an independent OR alternative
+    paren_groups = re.findall(r'\(([^()]+)\)', clean)
+
+    if paren_groups:
+        # Each paren group is an OR alternative — if any group matches, fire
+        for group in paren_groups:
+            if _eval_group(group, event):
+                return True
+        # Also check any field conditions outside parens
+        outside = re.sub(r'\([^()]+\)', '', clean)
+        if outside.strip() and _eval_group(outside, event):
+            return True
+        return False
+    else:
+        # No paren groups — evaluate flat conditions
+        return _eval_group(clean, event)
+
+
+def _eval_group(text: str, event: dict) -> bool:
+    """
+    Evaluate a group of SPL conditions against an event.
+
+    Rules:
+    - field IN (...) — any value matches → True
+    - field="value" — wildcard match
+    - Multiple conditions on same field → AND (all must match)
+    - Conditions on different fields → OR (any match is enough)
+    - OR keyword between conditions → split and evaluate each side
+    """
+    # Handle explicit OR keyword — split into alternatives
+    or_parts = re.split(r'\bOR\b', text, flags=re.IGNORECASE)
+    if len(or_parts) > 1:
+        return any(_eval_and_block(part, event) for part in or_parts)
+
+    return _eval_and_block(text, event)
+
+
+def _eval_and_block(text: str, event: dict) -> bool:
+    """
+    Evaluate a block where multiple conditions on the same field are AND-ed.
+    Conditions across different fields are OR-ed.
+    """
+    # field IN (...) conditions
+    in_matches = []
+    for m in re.finditer(r'(\w+)\s+IN\s+\(([^)]+)\)', text, re.IGNORECASE):
+        field = m.group(1)
+        values = [v.strip().strip('"\'') for v in m.group(2).split(',')]
+        event_val = str(event.get(field, "") or "")
+        in_matches.append(any(match_wildcard(event_val, v) for v in values))
+
+    # field="value" conditions — group by field, AND within same field
+    text_no_in = re.sub(r'\w+\s+IN\s*\([^)]+\)', '', text, flags=re.IGNORECASE)
+    pairs = re.findall(r'(\w+)=["\']([^"\']*)["\']', text_no_in)
+
+    # Group by field
+    from collections import defaultdict
+    by_field = defaultdict(list)
+    for field, val in pairs:
+        by_field[field].append(val)
+
+    field_matches_list = []
+    for field, patterns in by_field.items():
+        event_val = str(event.get(field, "") or "")
+        # ALL patterns for this field must match (AND within field)
+        field_matches_list.append(all(match_wildcard(event_val, p) for p in patterns))
+
+    all_conditions = in_matches + field_matches_list
+
+    if not all_conditions:
+        return False
+
+    # Any field group matching is sufficient (OR across fields)
+    return any(all_conditions)
 
 
 def evaluate_rule(rule: dict, event: dict) -> bool:
     """
     Evaluate whether a rule's search logic matches an event.
-    Uses simplified SPL approximation — sufficient for unit testing.
+    Two-phase: check NOT conditions first, then positive conditions.
     """
     search = rule.get("search", "")
     if not search:
@@ -163,61 +226,24 @@ def evaluate_rule(rule: dict, event: dict) -> bool:
     if not search:
         return False
 
-    conditions = parse_spl_conditions(str(search))
+    search = str(search)
 
-    if not conditions:
-        # No parseable conditions — can't evaluate
+    # Phase 1: Check NOT conditions — if any match, rule does not fire
+    if not check_not_conditions(search, event):
         return False
 
-    # Evaluate each condition
-    positive_results = []
-    negative_results = []
-
-    for cond in conditions:
-        if cond.get("negated"):
-            # NOT condition — must NOT match
-            if cond["type"] == "equals":
-                match = field_matches(event, cond["field"], cond["value"])
-                negative_results.append(match)
-        elif cond["type"] == "in":
-            # Field IN (val1, val2) — any value matches
-            match = any(
-                match_wildcard(str(event.get(cond["field"], "")), v)
-                for v in cond["values"]
-            )
-            positive_results.append(match)
-        elif cond["type"] == "equals":
-            match = field_matches(event, cond["field"], cond["value"])
-            positive_results.append(match)
-
-    # Rule fires if:
-    # - At least one positive condition matches
-    # - No negative (NOT) conditions match
-    if not positive_results and not negative_results:
-        return False
-
-    positive_pass = any(positive_results) if positive_results else True
-    negative_pass = not any(negative_results) if negative_results else True
-
-    return positive_pass and negative_pass
+    # Phase 2: Check positive conditions — at least one must match
+    return check_positive_conditions(search, event)
 
 
-def run_rule_tests(
-    rule_path: Path,
-    verbose: bool = False
-) -> tuple[int, int, int]:
-    """
-    Run test cases for a single rule.
-    Returns (passed, failed, skipped).
-    """
+def run_rule_tests(rule_path: Path, verbose: bool = False) -> tuple[int, int, int]:
     rule = load_rule(rule_path)
     if not rule:
         return 0, 0, 1
 
     test_cases = load_test_cases(rule_path.stem)
-
     if not test_cases:
-        return 0, 0, 1  # skipped — no test cases
+        return 0, 0, 1
 
     title = rule.get("title", rule_path.stem)
     rule_id = rule.get("id", "")
@@ -229,7 +255,6 @@ def run_rule_tests(
         event = case.get("event", {})
         expected = case.get("expected_match", True)
         description = case.get("description", "unnamed test")
-
         actual = evaluate_rule(rule, event)
 
         if actual == expected:
@@ -258,7 +283,6 @@ def collect_rules(config: dict, single_file: Path | None = None, rule_id: str | 
             paths.extend(sorted(rule_dir.glob("*.yml")))
 
     if rule_id:
-        # Filter to the specific rule ID
         filtered = []
         for p in paths:
             rule = load_rule(p)
