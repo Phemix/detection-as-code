@@ -12,12 +12,21 @@ Usage:
   python scripts/test_rules.py --rule DET-00001       # test single rule by ID
   python scripts/test_rules.py --file rules/...       # test single rule by path
   python scripts/test_rules.py --verbose              # show event detail on failure
+
+KNOWN LIMITATIONS:
+  - NOT conditions nested inside OR groups are evaluated globally.
+    e.g. (ParentImage IN (...) OR NOT (CommandLine="*val*")) — the NOT
+    is extracted globally rather than as part of the OR alternative.
+    Test cases should avoid relying on this pattern.
+  - Complex nested parentheses beyond two levels may not evaluate correctly.
+  - SPL eval, stats, rex, and other commands are ignored.
 """
 
 import argparse
 import json
 import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import yaml
@@ -64,175 +73,215 @@ def normalize(val: str) -> str:
 
 
 def match_wildcard(event_val: str, pattern: str) -> bool:
+    """
+    Match a SPL wildcard pattern against an event value.
+    Normalizes backslash sequences to handle YAML double-escaping of Windows paths.
+    """
     ev = normalize(event_val)
     pat = normalize(pattern)
-    # Normalize backslash sequences to single backslash
-    # YAML double-escapes Windows paths (\\mmc.exe) but events have single (\mmc.exe)
+    # Collapse any run of backslashes to a single backslash.
+    # YAML double-escapes Windows paths: \\mmc.exe → \\\\mmc.exe in the string.
     pat = re.sub(r'\\+', '\\\\', pat)
     ev = re.sub(r'\\+', '\\\\', ev)
     if pat == "*":
         return True
-    regex = re.escape(pat).replace(r"\*", ".*")
+    regex = re.escape(pat).replace(r'\*', '.*')
     return bool(re.search(f"^{regex}$", ev))
 
 
-def field_matches(event: dict, field: str, pattern: str) -> bool:
-    val = event.get(field, "") or ""
-    return match_wildcard(str(val), pattern)
+def field_val(event: dict, field: str) -> str:
+    return str(event.get(field, "") or "")
 
 
 def check_not_conditions(search: str, event: dict) -> bool:
     """
-    Returns True if the event passes all NOT filters (i.e. should not be excluded).
-    Returns False if any NOT condition matches (event should be excluded).
+    Evaluate all NOT conditions in the search string.
+    Returns False if the event matches any NOT condition (i.e. should be excluded).
 
     Handles:
-      NOT (field="value" field2="value2")  — all fields in block must match to exclude
-      NOT field IN ("val1","val2")          — any value match excludes
-      NOT (field IN ("val1","val2"))        — same
+      NOT field IN ("val1","val2")        — any value match → exclude
+      NOT (field IN ("val1","val2"))      — any value match → exclude
+      NOT (field1="v1" field2="v2")       — ALL fields must match → exclude
     """
     # NOT field IN (...)
     for m in re.finditer(r'NOT\s+(\w+)\s+IN\s+\(([^)]+)\)', search, re.IGNORECASE):
         field = m.group(1)
         values = [v.strip().strip('"\'') for v in m.group(2).split(',')]
-        event_val = str(event.get(field, "") or "")
-        if any(match_wildcard(event_val, v) for v in values):
-            return False  # excluded
+        if any(match_wildcard(field_val(event, field), v) for v in values):
+            return False
 
     # NOT (...) blocks
     for m in re.finditer(r'NOT\s*\(([^)]+)\)', search, re.IGNORECASE):
         inner = m.group(1)
-        # Check if inner is an IN expression
         in_m = re.match(r'(\w+)\s+IN\s+\(([^)]+)\)', inner.strip(), re.IGNORECASE)
         if in_m:
             field = in_m.group(1)
             values = [v.strip().strip('"\'') for v in in_m.group(2).split(',')]
-            event_val = str(event.get(field, "") or "")
-            if any(match_wildcard(event_val, v) for v in values):
+            if any(match_wildcard(field_val(event, field), v) for v in values):
                 return False
         else:
-            # field="value" pairs — ALL must match to trigger exclusion
+            # All field="value" pairs in the block must match to trigger exclusion
             pairs = re.findall(r'(\w+)=["\']([^"\']*)["\']', inner)
-            if pairs and all(field_matches(event, f, v) for f, v in pairs):
+            if pairs and all(match_wildcard(field_val(event, f), v) for f, v in pairs):
                 return False
 
-    return True  # not excluded
+    return True
 
 
-def check_positive_conditions(search: str, event: dict) -> bool:
+def split_or(text: str) -> list[str]:
+    """Split text on OR keyword, respecting parenthesis depth."""
+    parts = []
+    depth = 0
+    buf = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == '(':
+            depth += 1
+            buf.append(c)
+        elif c == ')':
+            depth -= 1
+            buf.append(c)
+        elif depth == 0 and text[i:i+2].upper() == 'OR' and (i == 0 or not text[i-1].isalnum()):
+            after = text[i+2:i+3]
+            if not after or not after.isalnum():
+                parts.append(''.join(buf))
+                buf = []
+                i += 2
+                continue
+            else:
+                buf.append(c)
+        else:
+            buf.append(c)
+        i += 1
+    if buf:
+        parts.append(''.join(buf))
+    return [p.strip() for p in parts if p.strip()]
+
+
+def eval_clause(text: str, event: dict) -> bool:
     """
-    Returns True if the event matches the positive detection logic.
+    Evaluate a flat block of SPL conditions (no nested OR).
 
-    Strategy: remove NOT blocks, then evaluate remaining conditions.
-    Parenthesized groups connected by OR — any group matching is sufficient.
-    Within a group, multiple conditions on the same field are AND-ed.
-    Across fields within a group, conditions are OR-ed.
+    Semantics:
+    - field IN (...): satisfied if any value matches (OR within values)
+    - field="v1" field="v2" on SAME field: both must match (AND within field)
+    - Conditions on DIFFERENT fields: ALL must match (AND across fields)
     """
-    # Strip NOT blocks and pipe commands
-    clean = re.sub(r'NOT\s+\w+\s+IN\s*\([^)]+\)', '', search, flags=re.IGNORECASE)
-    clean = re.sub(r'NOT\s*\([^)]+\)', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'\|.*', '', clean, flags=re.DOTALL)  # strip pipe commands
-    clean = re.sub(r'index\s*=\s*\S+', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'source\s*=\s*"[^"]*"', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'EventID\s*=\s*\d+', '', clean, flags=re.IGNORECASE)
+    reqs: dict[str, list[bool]] = defaultdict(list)
 
-    # Extract parenthesized OR groups at the top level
-    # Try matching each paren group as an independent OR alternative
-    paren_groups = re.findall(r'\(([^()]+)\)', clean)
-
-    if paren_groups:
-        # Each paren group is an OR alternative — if any group matches, fire
-        for group in paren_groups:
-            if _eval_group(group, event):
-                return True
-        # Also check any field conditions outside parens
-        outside = re.sub(r'\([^()]+\)', '', clean)
-        if outside.strip() and _eval_group(outside, event):
-            return True
-        return False
-    else:
-        # No paren groups — evaluate flat conditions
-        return _eval_group(clean, event)
-
-
-def _eval_group(text: str, event: dict) -> bool:
-    """
-    Evaluate a group of SPL conditions against an event.
-
-    Rules:
-    - field IN (...) — any value matches → True
-    - field="value" — wildcard match
-    - Multiple conditions on same field → AND (all must match)
-    - Conditions on different fields → OR (any match is enough)
-    - OR keyword between conditions → split and evaluate each side
-    """
-    # Handle explicit OR keyword — split into alternatives
-    or_parts = re.split(r'\bOR\b', text, flags=re.IGNORECASE)
-    if len(or_parts) > 1:
-        return any(_eval_and_block(part, event) for part in or_parts)
-
-    return _eval_and_block(text, event)
-
-
-def _eval_and_block(text: str, event: dict) -> bool:
-    """
-    Evaluate a block where multiple conditions on the same field are AND-ed.
-    Conditions across different fields are OR-ed.
-    """
-    # field IN (...) conditions
-    in_matches = []
+    # IN conditions — OR within values, one result per field
     for m in re.finditer(r'(\w+)\s+IN\s+\(([^)]+)\)', text, re.IGNORECASE):
         field = m.group(1)
         values = [v.strip().strip('"\'') for v in m.group(2).split(',')]
-        event_val = str(event.get(field, "") or "")
-        in_matches.append(any(match_wildcard(event_val, v) for v in values))
+        reqs[field].append(any(match_wildcard(field_val(event, field), v) for v in values))
 
-    # field="value" conditions — group by field, AND within same field
+    # field="value" pairs
     text_no_in = re.sub(r'\w+\s+IN\s*\([^)]+\)', '', text, flags=re.IGNORECASE)
-    pairs = re.findall(r'(\w+)=["\']([^"\']*)["\']', text_no_in)
+    for m in re.finditer(r'(\w+)=["\']([^"\']*)["\']', text_no_in):
+        field, pattern = m.group(1), m.group(2)
+        reqs[field].append(match_wildcard(field_val(event, field), pattern))
 
-    # Group by field
-    from collections import defaultdict
-    by_field = defaultdict(list)
-    for field, val in pairs:
-        by_field[field].append(val)
-
-    field_matches_list = []
-    for field, patterns in by_field.items():
-        event_val = str(event.get(field, "") or "")
-        # ALL patterns for this field must match (AND within field)
-        field_matches_list.append(all(match_wildcard(event_val, p) for p in patterns))
-
-    all_conditions = in_matches + field_matches_list
-
-    if not all_conditions:
+    if not reqs:
         return False
 
-    # Any field group matching is sufficient (OR across fields)
-    return any(all_conditions)
+    # All field requirements must be satisfied (AND across fields)
+    # Within a field, all requirements must be true
+    return all(all(v) for v in reqs.values())
+
+
+def eval_expression(text: str, event: dict) -> bool:
+    """
+    Recursively evaluate an SPL expression.
+
+    Handles:
+    - Nested parentheses (recursive evaluation)
+    - OR alternatives at any level
+    - AND semantics across conditions and paren groups
+    """
+    text = text.strip()
+
+    # Unwrap outer parens if they wrap the entire expression
+    if text.startswith('(') and text.endswith(')'):
+        depth = 0
+        fully_wrapped = True
+        for i, c in enumerate(text):
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+            if depth == 0 and i < len(text) - 1:
+                fully_wrapped = False
+                break
+        if fully_wrapped:
+            text = text[1:-1].strip()
+
+    # Split on top-level OR
+    or_parts = split_or(text)
+    if len(or_parts) > 1:
+        return any(eval_expression(part, event) for part in or_parts)
+
+    # No top-level OR — AND block
+    # Find inner paren groups (not IN value lists) and evaluate recursively
+    paren_results = []
+    remaining = text
+
+    for m in re.finditer(r'\(([^()]+)\)', text):
+        before = text[:m.start()].rstrip()
+        if re.search(r'\bIN\s*$', before, re.IGNORECASE):
+            continue  # skip IN value lists
+        paren_results.append(eval_expression(m.group(1), event))
+        remaining = remaining.replace(m.group(0), ' ', 1)
+
+    # Evaluate flat conditions outside paren groups
+    flat = eval_clause(remaining, event)
+
+    # All paren groups must pass
+    if paren_results and not all(paren_results):
+        return False
+
+    # If there are flat conditions, they must also pass
+    has_flat = bool(re.search(r'(\w+\s+IN\s*\(|\w+=["\'])', remaining, re.IGNORECASE))
+    if has_flat and not flat:
+        return False
+
+    # If no conditions at all, don't fire
+    if not paren_results and not has_flat:
+        return False
+
+    return True
+
+
+def check_positive_conditions(search: str, event: dict) -> bool:
+    """Clean the search and evaluate positive conditions."""
+    clean = re.sub(r'NOT\s+\w+\s+IN\s*\([^)]+\)', '', search, flags=re.IGNORECASE)
+    clean = re.sub(r'NOT\s*\([^)]+\)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\|.*', '', clean, flags=re.DOTALL)
+    clean = re.sub(r'index\s*=\s*\S+', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'source\s*=\s*"[^"]*"', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'EventID\s*=\s*\d+', '', clean, flags=re.IGNORECASE)
+    return eval_expression(clean, event)
 
 
 def evaluate_rule(rule: dict, event: dict) -> bool:
     """
     Evaluate whether a rule's search logic matches an event.
-    Two-phase: check NOT conditions first, then positive conditions.
+    Phase 1: NOT conditions — if any match, rule does not fire.
+    Phase 2: Positive conditions — all requirements must be met.
     """
     search = rule.get("search", "")
     if not search:
         detection = rule.get("detection", {})
         if isinstance(detection, dict):
             search = detection.get("raw_query", "")
-
     if not search:
         return False
 
     search = str(search)
 
-    # Phase 1: Check NOT conditions — if any match, rule does not fire
     if not check_not_conditions(search, event):
         return False
 
-    # Phase 2: Check positive conditions — at least one must match
     return check_positive_conditions(search, event)
 
 

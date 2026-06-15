@@ -4,7 +4,7 @@
     "expected_match": true,
     "event": {
       "Image": "C:\\Windows\\System32\\net.exe",
-      "CommandLine": "net user /domain",
+      "CommandLine": "net user domain",
       "User": "CORP\\jdoe",
       "ParentImage": "C:\\Windows\\System32\\cmd.exe",
       "Computer": "WORKSTATION-01"
@@ -26,7 +26,7 @@
     "expected_match": false,
     "event": {
       "Image": "C:\\Windows\\System32\\net.exe",
-      "CommandLine": "net user /domain",
+      "CommandLine": "net user domain",
       "User": "NT AUTHORITY\\SYSTEM",
       "ParentImage": "C:\\Windows\\System32\\services.exe",
       "Computer": "WORKSTATION-03"
