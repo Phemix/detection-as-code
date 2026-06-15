@@ -64,6 +64,28 @@ jobs:
       - name: Validate all rules (push to main or manual)
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: python scripts/validate.py
+
+      - name: Run rule tests (PR — changed rules only)
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED="${{ steps.changed.outputs.files }}"
+          if [ -z "$CHANGED" ]; then echo "No rule files changed."; exit 0; fi
+          FAILED=0
+          while IFS= read -r file; do
+            if [ -n "$file" ] && [ -f "$file" ]; then
+              RULE_ID=$(python3 -c "import yaml; r=yaml.safe_load(open('$file')); print(r.get('id',''))" 2>/dev/null)
+              if [ -n "$RULE_ID" ]; then
+                echo "Testing: $file ($RULE_ID)"
+                python scripts/test_rules.py --rule "$RULE_ID" || FAILED=1
+              fi
+            fi
+          done <<< "$CHANGED"
+          exit $FAILED
+
+      - name: Run rule tests
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: python scripts/test_rules.py
+
       - name: Upload validation report
         if: always()
         uses: actions/upload-artifact@v4
