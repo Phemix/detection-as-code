@@ -86,6 +86,10 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: python scripts/test_rules.py
 
+      - name: Check promotion staleness
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: python scripts/check_staleness.py --days 30
+
       - name: Upload validation report
         if: always()
         uses: actions/upload-artifact@v4
