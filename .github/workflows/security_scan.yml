@@ -1,0 +1,68 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 1. Secrets Detection ────────────────────────────────────────────
+      - name: Scan for secrets (TruffleHog)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.before || github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+      # ── 2. Python SAST (Bandit) ─────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security scanning tools
+        run: pip install bandit pip-audit checkov
+
+      - name: Python SAST scan (Bandit)
+        run: |
+          bandit -r scripts/ \
+            --severity-level medium \
+            --confidence-level medium \
+            --format txt \
+            --exit-zero
+        continue-on-error: false
+
+      # ── 3. Dependency Scanning (pip-audit) ──────────────────────────────
+      - name: Dependency vulnerability scan (pip-audit)
+        run: |
+          pip-audit -r requirements.txt \
+            --format columns \
+            --progress-spinner off
+        continue-on-error: false
+
+      # ── 4. Workflow Security (Checkov) ───────────────────────────────────
+      - name: GitHub Actions workflow scan (Checkov)
+        run: |
+          checkov -d .github/workflows/ \
+            --framework github_actions \
+            --quiet \
+            --compact \
+            --skip-check CKV_GHA_7
+        continue-on-error: true
