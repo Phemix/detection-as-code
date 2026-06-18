@@ -279,13 +279,14 @@ jobs:
           REPO_NAME: ${{ github.repository }}
           PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          RULE_COUNT=$(find rules/ -name "*.yml" | wc -l | tr -d ' ')
           python3 scripts/notify.py \
             --event deploy \
             --status success \
-            --rules $(python scripts/inventory.py --json | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])") \
+            --rules "$RULE_COUNT" \
             --branch ${{ github.ref_name }} \
             --commit ${{ github.sha }}
-
+            
       - name: Notify on failure
         if: github.ref == 'refs/heads/main' && failure()
         env:
