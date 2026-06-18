@@ -11,6 +11,8 @@
 | 🟡 Medium | 1 | | 🔗 Correlation | 0 |
 | 🔵 Low | 1 | | 📊 Baseline | 0 |
 
+**Average Rule Score:** 71/100  | 🟢 ≥80: 1  🟡 60-79: 3  🟠 40-59: 1  🔴 <40: 0
+
 **MITRE ATT&CK Coverage:** 6 techniques
 
 `T1003.001` `T1021.002` `T1027` `T1059.001` `T1065.003` `T1570`
@@ -19,30 +21,30 @@
 
 ### Execution (1)
 
-| ID | Title | Type | Level | Status | MITRE | Date |
-|----|-------|------|-------|--------|-------|------|
-| `DET-00002` | [PowerShell Encoded Command Execution](rules/execution/powershell_encoded_command.yml) | 🛡 detection | 🟠 high | 🧪 experimental | T1027, T1059.001 | 2024-01-15 |
+| ID | Title | Type | Level | Status | Score | MITRE | Date |
+|----|-------|------|-------|--------|-------|-------|------|
+| `DET-00002` | [PowerShell Encoded Command Execution](rules/execution/powershell_encoded_command.yml) | 🛡 detection | 🟠 high | 🧪 experimental | 🟡 75/100 | T1027, T1059.001 | 2024-01-15 |
 
 ### Persistence (1)
 
-| ID | Title | Type | Level | Status | MITRE | Date |
-|----|-------|------|-------|--------|-------|------|
-| `DET-00005` | [Femi Test](rules/persistence/femi_test.yml) | 🔍 hunting | 🔵 low | 🧪 experimental | T1059.001 | 2026-06-09 |
+| ID | Title | Type | Level | Status | Score | MITRE | Date |
+|----|-------|------|-------|--------|-------|-------|------|
+| `DET-00005` | [Femi Test](rules/persistence/femi_test.yml) | 🔍 hunting | 🔵 low | 🧪 experimental | 🟠 47/100 | T1059.001 | 2026-06-09 |
 
 ### Credential Access (1)
 
-| ID | Title | Type | Level | Status | MITRE | Date |
-|----|-------|------|-------|--------|-------|------|
-| `DET-00001` | [LSASS Memory Dump via ProcDump or comsvcs.dll](rules/credential_access/lsass_memory_dump_procdump.yml) | 🛡 detection | 🔴 critical | 🧪 experimental | T1003.001 | 2024-01-15 |
+| ID | Title | Type | Level | Status | Score | MITRE | Date |
+|----|-------|------|-------|--------|-------|-------|------|
+| `DET-00001` | [LSASS Memory Dump via ProcDump or comsvcs.dll](rules/credential_access/lsass_memory_dump_procdump.yml) | 🛡 detection | 🔴 critical | 🧪 experimental | 🟡 72/100 | T1003.001 | 2024-01-15 |
 
 ### Discovery (1)
 
-| ID | Title | Type | Level | Status | MITRE | Date |
-|----|-------|------|-------|--------|-------|------|
-| `DET-00006` | [Femi E2E Test](rules/discovery/femi_e2e_test.yml) | 🔍 hunting | 🟡 medium | 🧪 experimental | T1065.003 | 2026-06-12 |
+| ID | Title | Type | Level | Status | Score | MITRE | Date |
+|----|-------|------|-------|--------|-------|-------|------|
+| `DET-00006` | [Femi E2E Test](rules/discovery/femi_e2e_test.yml) | 🔍 hunting | 🟡 medium | 🧪 experimental | 🟡 72/100 | T1065.003 | 2026-06-12 |
 
 ### Lateral Movement (1)
 
-| ID | Title | Type | Level | Status | MITRE | Date |
-|----|-------|------|-------|--------|-------|------|
-| `DET-00003` | [PsExec Lateral Movement via Admin Shares](rules/lateral_movement/psexec_admin_shares.yml) | 🛡 detection | 🟠 high | 🧪 experimental | T1021.002, T1570 | 2024-01-15 |
+| ID | Title | Type | Level | Status | Score | MITRE | Date |
+|----|-------|------|-------|--------|-------|-------|------|
+| `DET-00003` | [PsExec Lateral Movement via Admin Shares](rules/lateral_movement/psexec_admin_shares.yml) | 🛡 detection | 🟠 high | ✅ stable | 🟢 90/100 | T1021.002, T1570 | 2024-01-15 |

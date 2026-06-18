@@ -7,7 +7,8 @@
     "medium": 1
   },
   "by_status": {
-    "experimental": 5
+    "experimental": 4,
+    "stable": 1
   },
   "by_tactic": {
     "credential_access": 1,
@@ -45,7 +46,8 @@
       ],
       "author": "Detection Engineering Team",
       "date": "2024-01-15",
-      "path": "rules/credential_access/lsass_memory_dump_procdump.yml"
+      "path": "rules/credential_access/lsass_memory_dump_procdump.yml",
+      "score": 72
     },
     {
       "title": "PowerShell Encoded Command Execution",
@@ -64,13 +66,14 @@
       ],
       "author": "Detection Engineering Team",
       "date": "2024-01-15",
-      "path": "rules/execution/powershell_encoded_command.yml"
+      "path": "rules/execution/powershell_encoded_command.yml",
+      "score": 75
     },
     {
       "title": "PsExec Lateral Movement via Admin Shares",
       "id": "DET-00003",
       "type": "detection",
-      "status": "experimental",
+      "status": "stable",
       "level": "high",
       "tactic": "lateral_movement",
       "techniques": [
@@ -83,7 +86,8 @@
       ],
       "author": "Detection Engineering Team",
       "date": "2024-01-15",
-      "path": "rules/lateral_movement/psexec_admin_shares.yml"
+      "path": "rules/lateral_movement/psexec_admin_shares.yml",
+      "score": 90
     },
     {
       "title": "Femi Test",
@@ -102,7 +106,8 @@
       ],
       "author": "Detection Engineering Team",
       "date": "2026-06-09",
-      "path": "rules/persistence/femi_test.yml"
+      "path": "rules/persistence/femi_test.yml",
+      "score": 47
     },
     {
       "title": "Femi E2E Test",
@@ -121,7 +126,8 @@
       ],
       "author": "Detection Engineering Team",
       "date": "2026-06-12",
-      "path": "rules/discovery/femi_e2e_test.yml"
+      "path": "rules/discovery/femi_e2e_test.yml",
+      "score": 72
     }
   ]
 }
