@@ -88,8 +88,10 @@ endif
 
 compile: compile-splunk
 
-compile-splunk:
-	@$(PYTHON) $(SCRIPTS)/compile.py --backend splunk
+
+#compile-splunk:
+#	@$(PYTHON) $(SCRIPTS)/compile.py --backend splunk
+
 
 inventory:
 	@$(PYTHON) $(SCRIPTS)/inventory.py --output RULES.md
@@ -147,6 +149,12 @@ score-verbose:
 
 score-strict:
 	@$(PYTHON) $(SCRIPTS)/score.py --fail
+
+notify-test:
+	@$(PYTHON) $(SCRIPTS)/notify.py --event pipeline --status success --branch main --dry-run
+
+notify-deploy:
+	@$(PYTHON) $(SCRIPTS)/notify.py --event deploy --status success --rules $(RULES) --branch main
 
 check-staleness:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py
