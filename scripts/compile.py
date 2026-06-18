@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
-compile.py — Compile SSC-style detection rules to deployable SPL.
-Reads the 'search' field and wraps with metadata comments,
-schedule info, and normalized output fields.
+compile.py — Multi-backend detection rule compiler.
+
+Routes each rule to one or more backend compilers based on the
+--backend flag. Each backend reads the appropriate search field
+from the rule YAML and writes a compiled output file.
+
+Backends:
+  splunk    → reads 'search' field, writes .spl to compiled/splunk/
+  sentinel  → reads 'kql_search' field, writes .kql to compiled/sentinel/
+  all       → runs all configured backends
 
 Usage:
-  python scripts/compile.py
-  python scripts/compile.py --backend splunk
-  python scripts/compile.py --file rules/...
-  python scripts/compile.py --dry-run
+  python scripts/compile.py                          # all backends
+  python scripts/compile.py --backend splunk         # Splunk only
+  python scripts/compile.py --backend sentinel       # Sentinel only
+  python scripts/compile.py --file rules/...         # single rule
+  python scripts/compile.py --dry-run               # preview only
 """
 
 import argparse
-import re
+import importlib
 import sys
 from pathlib import Path
 
@@ -23,8 +31,10 @@ CONFIG_FILE = ROOT / "sigma_config.yml"
 
 ANSI_GREEN = "\033[32m"
 ANSI_RED = "\033[31m"
+ANSI_YELLOW = "\033[33m"
 ANSI_RESET = "\033[0m"
 ANSI_BOLD = "\033[1m"
+ANSI_DIM = "\033[2m"
 
 
 def load_config() -> dict:
@@ -32,104 +42,18 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def load_rule(path: Path) -> tuple[dict | None, str | None]:
+def load_rule(path: Path) -> dict | None:
     try:
         with open(path) as f:
-            rule = yaml.safe_load(f)
-        if not isinstance(rule, dict):
-            return None, "File does not parse to a YAML mapping"
-        return rule, None
-    except yaml.YAMLError as e:
-        return None, f"YAML parse error: {e}"
-
-
-def extract_mitre(rule: dict) -> str:
-    # Support both mitre: [T1059.001] and tags: [attack.t1059.001]
-    mitre_field = rule.get("mitre", [])
-    if isinstance(mitre_field, list) and mitre_field:
-        return ", ".join(str(t) for t in mitre_field)
-
-    tags = rule.get("tags", [])
-    techniques = []
-    for tag in tags:
-        m = re.search(r't(\d{4}(?:\.\d{3})?)', str(tag), re.IGNORECASE)
-        if m:
-            techniques.append(f"T{m.group(1).upper()}")
-    return ", ".join(sorted(set(techniques))) or "unknown"
-
-
-def get_search(rule: dict) -> str:
-    # Prefer 'search' field (SSC style), fall back to detection.raw_query
-    search = rule.get("search", "")
-    if search:
-        return str(search).strip()
-    detection = rule.get("detection", {})
-    if isinstance(detection, dict):
-        return str(detection.get("raw_query", "")).strip()
-    return ""
-
-
-def get_schedule_comment(rule: dict) -> str:
-    schedule = rule.get("schedule")
-    if not schedule or not isinstance(schedule, dict):
-        return "| comment \"Schedule: not defined\""
-    cron = schedule.get("cron") or schedule.get("every", "not set")
-    earliest = schedule.get("earliest_time", "not set")
-    latest = schedule.get("latest_time", "not set")
-    return (
-        f"| comment \"Schedule: {cron}  |  "
-        f"earliest: {earliest}  latest: {latest}\""
-    )
-
-
-def compile_splunk(rule: dict, path: Path, output_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
-    search = get_search(rule)
-    if not search:
-        return False, "No SPL found in 'search' or 'detection.raw_query'"
-
-    title = rule.get("title") or rule.get("name", path.stem)
-    rule_id = str(rule.get("id", ""))
-    level = rule.get("level") or rule.get("severity", "unknown")
-    rule_type = rule.get("type", "detection")
-    author = rule.get("author", "unknown")
-    date = str(rule.get("date") or rule.get("creation_date", "unknown"))
-    modified = str(rule.get("modified") or rule.get("modification_date", date))
-    mitre = extract_mitre(rule)
-    schedule_comment = get_schedule_comment(rule)
-
-    compiled = f"""\
-| comment "────────────────────────────────────────────"
-| comment "Rule:     {title}"
-| comment "ID:       {rule_id}"
-| comment "Type:     {rule_type}"
-| comment "Severity: {level}"
-| comment "MITRE:    {mitre}"
-| comment "Author:   {author}"
-| comment "Created:  {date}  Modified: {modified}"
-{schedule_comment}
-| comment "────────────────────────────────────────────"
-
-{search}
-
-| eval rule_name="{title}", severity="{level}", mitre="{mitre}", rule_id="{rule_id}"
-| table _time, rule_name, severity, mitre, rule_id, host, user, process, src, dest
-"""
-
-    rel = path.relative_to(ROOT / "rules")
-    out_path = output_dir / rel.with_suffix(".spl")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if dry_run:
-        return True, f"[dry-run] Would write: {out_path.relative_to(ROOT)}"
-
-    out_path.write_text(compiled)
-    return True, str(out_path.relative_to(ROOT))
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"  {ANSI_RED}✗{ANSI_RESET}  Failed to load {path.name}: {e}")
+        return None
 
 
 def collect_rules(config: dict, single_file: Path | None = None) -> list[Path]:
-    """rule collect"""
     if single_file:
-        return [single_file]
+        return [single_file.resolve()]
     paths = []
     for d in config.get("rule_dirs", []):
         rule_dir = ROOT / d
@@ -138,59 +62,129 @@ def collect_rules(config: dict, single_file: Path | None = None) -> list[Path]:
     return paths
 
 
+def get_backend_module(backend_name: str):
+    """Dynamically import a backend module from scripts/backends/."""
+    try:
+        module = importlib.import_module(f"backends.{backend_name}")
+        return module
+    except ImportError as e:
+        print(f"  {ANSI_RED}✗{ANSI_RESET}  Backend '{backend_name}' not found: {e}")
+        return None
+
+
+def get_output_dir(config: dict, backend_name: str) -> Path:
+    """Get the output directory for a backend from sigma_config.yml."""
+    backends = config.get("backends", {})
+    backend_cfg = backends.get(backend_name, {})
+    output_dir = backend_cfg.get("output_dir", f"compiled/{backend_name}")
+    return ROOT / output_dir
+
+
+def compile_rule(
+    rule: dict,
+    path: Path,
+    backend_name: str,
+    output_dir: Path,
+    dry_run: bool = False
+) -> tuple[bool, str, bool]:
+    """
+    Compile a single rule with the specified backend.
+    Returns (success, message, skipped).
+    """
+    module = get_backend_module(backend_name)
+    if not module:
+        return False, f"Backend '{backend_name}' not available", False
+
+    ok, msg = module.compile(rule, path, output_dir, dry_run)
+
+    # Treat SKIP as a graceful non-failure
+    skipped = msg.startswith("SKIP:")
+    if skipped:
+        return True, msg, True
+
+    return ok, msg, False
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Compile detection rules to SPL")
-    parser.add_argument("--backend", default="splunk", help="Target backend (default: splunk)")
+    parser = argparse.ArgumentParser(description="Compile detection rules to backend query formats")
+    parser.add_argument(
+        "--backend",
+        choices=["splunk", "sentinel", "all"],
+        default="all",
+        help="Backend to compile for (default: all)"
+    )
     parser.add_argument("--file", type=Path, help="Compile a single rule file")
-    parser.add_argument("--dry-run", action="store_true", help="Show output without writing")
+    parser.add_argument("--dry-run", action="store_true", help="Preview output without writing files")
     args = parser.parse_args()
 
     config = load_config()
-    if args.file:
-        args.file = args.file.resolve()
-    rules = collect_rules(config, args.file)
+    paths = collect_rules(config, args.file)
 
-    if not rules:
+    if not paths:
         print("No rule files found.")
         sys.exit(0)
 
-    backend_cfg = config.get("backends", {}).get(args.backend, {})
-    output_dir = ROOT / backend_cfg.get("output_dir", f"compiled/{args.backend}")
+    # Determine which backends to run
+    configured_backends = list(config.get("backends", {}).keys()) or ["splunk"]
+    if args.backend == "all":
+        backends_to_run = configured_backends
+    else:
+        backends_to_run = [args.backend]
 
-    print(f"\n{ANSI_BOLD}Compilation Pipeline{ANSI_RESET}  ({len(rules)} rules  backend: {args.backend})\n")
+    dry_label = "  [dry-run]" if args.dry_run else ""
+    print(f"\n{ANSI_BOLD}Detection Rule Compiler{ANSI_RESET}{dry_label}  "
+          f"({len(paths)} rules  |  backends: {', '.join(backends_to_run)})\n")
 
-    total_ok = total_fail = 0
+    # Track results per backend
+    results: dict[str, dict] = {
+        b: {"compiled": 0, "skipped": 0, "failed": 0}
+        for b in backends_to_run
+    }
 
-    for path in rules:
-        rule, parse_err = load_rule(path)
-        if parse_err:
-            print(f"  {ANSI_RED}✗{ANSI_RESET}  {path.name}")
-            print(f"       {ANSI_RED}{parse_err}{ANSI_RESET}")
-            total_fail += 1
+    for path in paths:
+        rule = load_rule(path)
+        if not rule:
+            for b in backends_to_run:
+                results[b]["failed"] += 1
             continue
 
-        if args.backend == "splunk":
-            ok, msg = compile_splunk(rule, path, output_dir, args.dry_run)
-        else:
-            ok, msg = False, f"Backend '{args.backend}' not yet implemented"
+        title = rule.get("title") or rule.get("name", path.stem)
+        rule_id = str(rule.get("id", ""))
+        print(f"  {title} ({rule_id})")
 
-        if ok:
-            print(f"  {ANSI_GREEN}✓{ANSI_RESET}  {path.name}  →  {msg}")
-            total_ok += 1
-        else:
-            print(f"  {ANSI_RED}✗{ANSI_RESET}  {path.name}")
-            print(f"       {ANSI_RED}{msg}{ANSI_RESET}")
-            total_fail += 1
+        for backend_name in backends_to_run:
+            output_dir = get_output_dir(config, backend_name)
+            ok, msg, skipped = compile_rule(rule, path, backend_name, output_dir, args.dry_run)
 
+            if skipped:
+                print(f"    {ANSI_DIM}↷  [{backend_name}] {msg}{ANSI_RESET}")
+                results[backend_name]["skipped"] += 1
+            elif ok:
+                print(f"    {ANSI_GREEN}✓{ANSI_RESET}  [{backend_name}] → {msg}")
+                results[backend_name]["compiled"] += 1
+            else:
+                print(f"    {ANSI_RED}✗{ANSI_RESET}  [{backend_name}] {msg}")
+                results[backend_name]["failed"] += 1
+
+    # Summary
     print(f"\n{'─'*55}")
-    print(f"  Compiled: {ANSI_GREEN}{total_ok}{ANSI_RESET}")
-    print(f"  Failed:   {ANSI_RED}{total_fail}{ANSI_RESET}" if total_fail else f"  Failed:   {total_fail}")
+    total_failed = 0
+    for backend_name in backends_to_run:
+        r = results[backend_name]
+        total_failed += r["failed"]
+        skip_str = f"  skipped: {ANSI_YELLOW}{r['skipped']}{ANSI_RESET}" if r["skipped"] else ""
+        fail_str = f"  failed: {ANSI_RED}{r['failed']}{ANSI_RESET}" if r["failed"] else f"  failed: {r['failed']}"
+        print(f"  {ANSI_BOLD}{backend_name:<10}{ANSI_RESET}"
+              f"  compiled: {ANSI_GREEN}{r['compiled']}{ANSI_RESET}"
+              f"{skip_str}"
+              f"{fail_str}")
 
-    if total_fail > 0:
-        print(f"\n{ANSI_RED}✗ Compilation completed with errors{ANSI_RESET}\n")
+    print()
+    if total_failed > 0:
+        print(f"{ANSI_RED}✗ Compilation completed with errors{ANSI_RESET}\n")
         sys.exit(1)
     else:
-        print(f"\n{ANSI_GREEN}✓ All rules compiled successfully{ANSI_RESET}\n")
+        print(f"{ANSI_GREEN}✓ Compilation complete{ANSI_RESET}\n")
         sys.exit(0)
 
 

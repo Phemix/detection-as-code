@@ -42,3 +42,12 @@ rule_dirs:
   - rules/exfiltration
   - rules/discovery
   - rules/command_and_control
+
+
+backends:
+  splunk:
+    output_dir: compiled/splunk
+    extension: .spl
+  sentinel:
+    output_dir: compiled/sentinel
+    extension: .kql

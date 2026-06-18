@@ -121,6 +121,21 @@ else
 	@$(PYTHON) $(SCRIPTS)/promote.py --file $(FILE)
 endif
 
+compile-splunk:
+	@$(PYTHON) $(SCRIPTS)/compile.py --backend splunk
+
+compile-sentinel:
+	@$(PYTHON) $(SCRIPTS)/compile.py --backend sentinel
+
+compile-all:
+	@$(PYTHON) $(SCRIPTS)/compile.py --backend all
+
+check-staleness:
+	@$(PYTHON) $(SCRIPTS)/check_staleness.py
+
+check-staleness-strict:
+	@$(PYTHON) $(SCRIPTS)/check_staleness.py --fail
+
 clean:
 	@rm -rf compiled/splunk
 	@echo "Cleaned"
