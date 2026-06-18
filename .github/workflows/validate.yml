@@ -279,7 +279,7 @@ jobs:
           REPO_NAME: ${{ github.repository }}
           PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          python scripts/notify.py \
+          python3 scripts/notify.py \
             --event deploy \
             --status success \
             --rules $(python scripts/inventory.py --json | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])") \
@@ -293,7 +293,7 @@ jobs:
           REPO_NAME: ${{ github.repository }}
           PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          python scripts/notify.py \
+          python3 scripts/notify.py \
             --event pipeline \
             --status failure \
             --branch ${{ github.ref_name }} \
