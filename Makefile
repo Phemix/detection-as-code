@@ -130,6 +130,24 @@ compile-sentinel:
 compile-all:
 	@$(PYTHON) $(SCRIPTS)/compile.py --backend all
 
+coverage:
+	@$(PYTHON) $(SCRIPTS)/coverage.py
+
+coverage-html:
+	@$(PYTHON) $(SCRIPTS)/coverage.py --html-only
+
+coverage-markdown:
+	@$(PYTHON) $(SCRIPTS)/coverage.py --markdown-only
+
+score:
+	@$(PYTHON) $(SCRIPTS)/score.py
+
+score-verbose:
+	@$(PYTHON) $(SCRIPTS)/score.py --verbose
+
+score-strict:
+	@$(PYTHON) $(SCRIPTS)/score.py --fail
+
 check-staleness:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py
 
