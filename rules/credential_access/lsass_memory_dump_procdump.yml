@@ -34,6 +34,15 @@ search: |
   NOT (User="*SYSTEM*" ParentImage="*\\mmc.exe")
   | table _time, Computer, User, Image, CommandLine, ParentImage, ParentCommandLine
   | sort -_time
+
+kql_search: |
+  DeviceProcessEvents
+  | where FileName in~ ("procdump.exe", "procdump64.exe")
+  | where ProcessCommandLine contains "lsass"
+  | where ProcessCommandLine contains "-ma"
+  | where not (AccountName contains "SYSTEM" and InitiatingProcessFileName =~ "mmc.exe")
+  | project TimeGenerated, DeviceName, AccountName, FolderPath,
+            ProcessCommandLine, InitiatingProcessFolderPath, InitiatingProcessCommandLine
 falsepositives:
   - Legitimate memory diagnostic tools in authorized change windows
   - Vendor-approved debugging sessions with documented approval ticket

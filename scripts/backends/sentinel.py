@@ -54,6 +54,8 @@ def compile(rule: dict, path: Path, output_dir: Path, dry_run: bool = False) -> 
     """
     Compile a rule to Microsoft Sentinel KQL.
     Returns (False, skip_reason) if no kql_search field is present.
+    Preserves tactic subdirectory structure in output:
+      compiled/sentinel/credential_access/lsass_memory_dump_procdump.kql
     """
     kql = get_kql_search(rule)
     if not kql:
@@ -114,11 +116,23 @@ def compile(rule: dict, path: Path, output_dir: Path, dry_run: bool = False) -> 
     InitiatingProcessFolderPath
 """
 
-    ROOT = path.parents[path.parts.index("rules") - 1] if "rules" in path.parts else path.parent.parent
+    # ── Output path — preserve tactic subdirectory ────────────────────────
+    # Walk up the parent chain to find the rules/ directory
+    # This gives us: credential_access/lsass_memory_dump_procdump.yml
+    # Which becomes: compiled/sentinel/credential_access/lsass_memory_dump_procdump.kql
     try:
-        rel = path.relative_to(ROOT / "rules")
+        rules_root = None
+        for parent in path.parents:
+            if parent.name == "rules":
+                rules_root = parent
+                break
+        if rules_root:
+            rel = path.relative_to(rules_root)
+        else:
+            # Fallback: use tactic directory + filename
+            rel = Path(path.parent.name) / path.name
     except ValueError:
-        rel = Path(path.name)
+        rel = Path(path.parent.name) / path.name
 
     out_path = output_dir / rel.with_suffix(".kql")
     out_path.parent.mkdir(parents=True, exist_ok=True)
