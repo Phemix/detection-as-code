@@ -3,7 +3,7 @@ id: DET-00007
 type: detection
 status: experimental
 description: >
-  Remote Monitoring and Management (RMM) tools are legitimate software used by IT teams but are frequently abused by threat actors for persistent unauthorized access, lateral movement, and data exfiltration. Attackers deploy RMMs such as AnyDesk, TeamViewer, ConnectWise ScreenConnect, Atera, and Fleetdeck on compromised macOS endpoints to maintain stealthy command-and-control channels that bypass traditional security controls. This rule detects the execution of known RMM agent processes on macOS systems to surface unauthorized or unexpected remote access tooling.
+  Remote Monitoring and Management (RMMs) tools are legitimate software used by IT teams but are frequently abused by threat actors for persistent unauthorized access, lateral movement, and data exfiltration. Attackers deploy RMMs such as AnyDesk, TeamViewer, ConnectWise ScreenConnect, Atera, and Fleetdeck on compromised macOS endpoints to maintain stealthy command-and-control channels that bypass traditional security controls. This rule detects the execution of known RMM agent processes on macOS systems to surface unauthorized or unexpected remote access tooling.
 author: Detection Engineering Team
 date: 2026-07-07
 modified: 2026-07-07
