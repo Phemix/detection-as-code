@@ -162,6 +162,9 @@ check-staleness:
 check-staleness-strict:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py --fail
 
+new-rule-ai:
+	@$(PYTHON) $(SCRIPTS)/new_rule_ai.py
+
 clean:
 	@rm -rf compiled/splunk
 	@echo "Cleaned"
