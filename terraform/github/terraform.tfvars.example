@@ -1,0 +1,10 @@
+# terraform/github/terraform.tfvars.example
+# Copy to terraform.tfvars and fill in values
+# NEVER commit terraform.tfvars — it contains secrets
+
+github_owner    = "phemix"
+repository_name = "detection-as-code"
+
+# Set these via environment variables instead of this file:
+# export TF_VAR_webhook_url="https://hooks.slack.com/services/..."
+# export TF_VAR_splunk_password="your_splunk_password"
