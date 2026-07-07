@@ -1,32 +1,35 @@
 {
-  "total": 5,
+  "total": 6,
   "by_level": {
     "critical": 1,
-    "high": 2,
+    "high": 3,
     "low": 1,
     "medium": 1
   },
   "by_status": {
-    "experimental": 4,
+    "experimental": 5,
     "stable": 1
   },
   "by_tactic": {
     "credential_access": 1,
-    "execution": 1,
+    "execution": 2,
     "lateral_movement": 1,
     "persistence": 1,
     "discovery": 1
   },
   "by_type": {
-    "detection": 3,
+    "detection": 4,
     "hunting": 2
   },
   "mitre_coverage": [
     "T1003.001",
     "T1021.002",
+    "T1021.004",
     "T1027",
     "T1059.001",
+    "T1059.004",
     "T1065.003",
+    "T1219",
     "T1570"
   ],
   "rules": [
@@ -47,7 +50,7 @@
       "author": "Detection Engineering Team",
       "date": "2024-01-15",
       "path": "rules/credential_access/lsass_memory_dump_procdump.yml",
-      "score": 72
+      "score": 82
     },
     {
       "title": "PowerShell Encoded Command Execution",
@@ -68,6 +71,26 @@
       "date": "2024-01-15",
       "path": "rules/execution/powershell_encoded_command.yml",
       "score": 75
+    },
+    {
+      "title": "Remote Monitoring and Management (RMM) Tool Detected on macOS Endpoint",
+      "id": "DET-00007",
+      "type": "detection",
+      "status": "experimental",
+      "level": "high",
+      "tactic": "execution",
+      "techniques": [
+        "T1021.004",
+        "T1059.004",
+        "T1219"
+      ],
+      "analytic_story": [
+        "AI Generated"
+      ],
+      "author": "Detection Engineering Team",
+      "date": "2026-07-07",
+      "path": "rules/execution/remote_monitoring_and_management_rmm_tool_detected_on_macos_.yml",
+      "score": 85
     },
     {
       "title": "PsExec Lateral Movement via Admin Shares",
