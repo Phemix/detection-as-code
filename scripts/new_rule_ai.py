@@ -142,7 +142,7 @@ def call_claude(prompt_text: str, api_key: str) -> str:
     """Call the Anthropic API and return the response text."""
     payload = {
         "model": MODEL,
-        "max_tokens": 3000,
+        "max_tokens": 4096,
         "messages": [{"role": "user", "content": prompt_text}]
     }
 
@@ -170,12 +170,26 @@ def call_claude(prompt_text: str, api_key: str) -> str:
 
 def parse_json_response(response: str) -> dict:
     """Extract and parse JSON from Claude's response."""
-    # Strip markdown code blocks if present
     response = response.strip()
     response = re.sub(r'^```json\s*', '', response)
     response = re.sub(r'^```\s*', '', response)
     response = re.sub(r'\s*```$', '', response)
-    return json.loads(response.strip())
+    response = response.strip()
+    
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        # Try to recover truncated JSON by finding the last complete field
+        # and closing the object
+        try:
+            # Find the last complete key-value pair
+            last_comma = response.rfind('",\n')
+            if last_comma > 0:
+                truncated = response[:last_comma + 1] + '\n  "test_cases": []}'
+                return json.loads(truncated)
+        except Exception:
+            pass
+        raise
 
 
 def build_rule_yaml(

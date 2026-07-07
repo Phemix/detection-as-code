@@ -298,12 +298,19 @@ def run_rule_tests(rule_path: Path, verbose: bool = False) -> tuple[int, int, in
     rule_id = rule.get("id", "")
     print(f"\n  {title} ({rule_id})")
 
-    passed = failed = 0
+    passed = failed = skipped = 0
 
     for case in test_cases:
+        description = case.get("description", "unnamed test")
+
+        # Skip cases marked as requiring Splunk replay testing
+        if case.get("_skip"):
+            print(f"    {ANSI_YELLOW}↷{ANSI_RESET}  {description}")
+            skipped += 1
+            continue
+
         event = case.get("event", {})
         expected = case.get("expected_match", True)
-        description = case.get("description", "unnamed test")
         actual = evaluate_rule(rule, event)
 
         if actual == expected:
@@ -318,7 +325,7 @@ def run_rule_tests(rule_path: Path, verbose: bool = False) -> tuple[int, int, in
                 print(f"       Event: {json.dumps(event, indent=2)}")
             failed += 1
 
-    return passed, failed, 0
+    return passed, failed, skipped
 
 
 def collect_rules(config: dict, single_file: Path | None = None, rule_id: str | None = None) -> list[Path]:
