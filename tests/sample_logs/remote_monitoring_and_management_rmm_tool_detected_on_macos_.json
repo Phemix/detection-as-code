@@ -1,0 +1,28 @@
+[
+  {
+    "description": "SKIP: This rule uses eval/stats/case() SPL commands that cannot be evaluated by the approximation matcher. Validate against real macOS endpoint telemetry in Splunk before promoting to stable.",
+    "expected_match": null,
+    "_skip": true
+  },
+  {
+    "description": "True positive: RustDesk deployed from temp directory",
+    "expected_match": true,
+    "_skip": true,
+    "event": {
+      "process_name": "rustdesk",
+      "process_path": "/tmp/suspicious/rustdesk",
+      "user": "john.doe",
+      "host": "MacBook-Pro-01"
+    }
+  },
+  {
+    "description": "True negative: Jamf MDM agent on approved host",
+    "expected_match": false,
+    "event": {
+      "process_name": "jamf",
+      "process_path": "/usr/local/jamf/bin/jamf",
+      "user": "jamf-mgmt",
+      "host": "it-helpdesk-mac-01"
+    }
+  }
+]

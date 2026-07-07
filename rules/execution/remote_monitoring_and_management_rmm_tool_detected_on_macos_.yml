@@ -1,0 +1,153 @@
+title: Remote Monitoring and Management (RMM) Tool Detected on macOS Endpoint
+id: DET-00007
+type: detection
+status: experimental
+description: >
+  Remote Monitoring and Management (RMM) tools are legitimate software used by IT teams but are frequently abused by threat actors for persistent unauthorized access, lateral movement, and data exfiltration. Attackers deploy RMMs such as AnyDesk, TeamViewer, ConnectWise ScreenConnect, Atera, and Fleetdeck on compromised macOS endpoints to maintain stealthy command-and-control channels that bypass traditional security controls. This rule detects the execution of known RMM agent processes on macOS systems to surface unauthorized or unexpected remote access tooling.
+author: Detection Engineering Team
+date: 2026-07-07
+modified: 2026-07-07
+mitre:
+  - T1219
+  - T1021.004
+  - T1059.004
+data_source:
+  - macOS Endpoint Telemetry - Process Execution (Jamf Protect, CrowdStrike Falcon, Microsoft Defender for Endpoint on macOS, Sysmon for Linux/macOS)
+analytic_story:
+  - AI Generated
+how_to_implement: >
+  Deploy an endpoint detection agent on macOS systems that forwards process execution telemetry to Splunk or Microsoft Sentinel. For Splunk, ensure the index receives macOS process events with fields: process_path (full executable path), process_name, cmdline, user, host, parent_process_name. For Sentinel/MDE, onboard macOS devices into Microsoft Defender for Endpoint to populate DeviceProcessEvents. Ensure Jamf, CrowdStrike, or equivalent agent coverage across the macOS fleet. Whitelist known-approved RMM tools used by your IT department via a lookup table or watchlist.
+schedule:
+  cron: "*/5 * * * *"
+  earliest_time: "-10m"
+  latest_time: "now"
+search: |
+  index=mac_endpoints sourcetype=macos_process_exec
+  | eval process_name_lower=lower(process_name)
+  | eval process_path_lower=lower(process_path)
+  | search (
+      process_name_lower="anydesk" OR
+      process_name_lower="teamviewer" OR
+      process_name_lower="teamviewer_desktop" OR
+      process_name_lower="connectwisecontrol.client" OR
+      process_name_lower="screenconnect.client" OR
+      process_name_lower="atera_agent" OR
+      process_name_lower="ateraagent" OR
+      process_name_lower="fleetdeck agent" OR
+      process_name_lower="fleetdeckagent" OR
+      process_name_lower="splashtopstreamer" OR
+      process_name_lower="splashtop streamer" OR
+      process_name_lower="logmein" OR
+      process_name_lower="logmeinrescue" OR
+      process_name_lower="bomgar" OR
+      process_name_lower="beyondtrust" OR
+      process_name_lower="remoteutilities" OR
+      process_name_lower="supremo" OR
+      process_name_lower="meshagent" OR
+      process_name_lower="mesh agent" OR
+      process_name_lower="rustdesk" OR
+      process_name_lower="ninjarmmagent" OR
+      process_name_lower="ninjaone" OR
+      process_name_lower="datto rmm" OR
+      process_name_lower="auvik" OR
+      process_name_lower="pulseway" OR
+      process_name_lower="zoho assist" OR
+      process_name_lower="zohoassist" OR
+      process_path_lower="*/anydesk.app/*" OR
+      process_path_lower="*/teamviewer.app/*" OR
+      process_path_lower="*/screenconnect*" OR
+      process_path_lower="*/connectwise*" OR
+      process_path_lower="*/rustdesk*" OR
+      process_path_lower="*/meshagent*" OR
+      process_path_lower="*/atera*" OR
+      process_path_lower="*/splashtop*"
+  )
+  NOT (user="it-support-svc" OR user="jamf-mgmt" OR user="mdm-agent")
+  NOT host IN ("it-helpdesk-mac-01", "it-helpdesk-mac-02", "secops-mac-01")
+  | eval risk_score=case(
+      process_name_lower="anydesk", 70,
+      process_name_lower="meshagent", 90,
+      process_name_lower="rustdesk", 85,
+      process_name_lower="screenconnect.client", 75,
+      true(), 70
+  )
+  | stats count min(_time) as first_seen max(_time) as last_seen values(process_path) as process_paths values(cmdline) as command_lines values(parent_process_name) as parent_processes by host, user, process_name, risk_score
+  | eval first_seen=strftime(first_seen,"%Y-%m-%d %H:%M:%S"), last_seen=strftime(last_seen,"%Y-%m-%d %H:%M:%S")
+  | table host, user, process_name, process_paths, command_lines, parent_processes, risk_score, first_seen, last_seen, count
+  | sort - risk_score, - count
+
+kql_search: |
+  let ApprovedRMMHosts = datatable(DeviceName:string)["it-helpdesk-mac-01", "it-helpdesk-mac-02", "secops-mac-01"];
+  let ApprovedRMMAccounts = datatable(AccountName:string)["it-support-svc", "jamf-mgmt", "mdm-agent"];
+  let RMMProcessNames = datatable(ProcessName:string, RiskScore:int, ToolName:string)[
+      "anydesk", 70, "AnyDesk",
+      "teamviewer", 70, "TeamViewer",
+      "teamviewer_desktop", 70, "TeamViewer",
+      "connectwisecontrol.client", 75, "ConnectWise ScreenConnect",
+      "screenconnect.client", 75, "ConnectWise ScreenConnect",
+      "atera_agent", 75, "Atera",
+      "ateraagent", 75, "Atera",
+      "fleetdeckagent", 80, "Fleetdeck",
+      "splashtopstreamer", 70, "Splashtop",
+      "logmein", 70, "LogMeIn",
+      "logmeinrescue", 70, "LogMeIn Rescue",
+      "bomgar", 70, "BeyondTrust Bomgar",
+      "beyondtrust", 70, "BeyondTrust",
+      "supremo", 75, "Supremo",
+      "meshagent", 90, "MeshCentral Agent",
+      "rustdesk", 85, "RustDesk",
+      "ninjarmmagent", 70, "NinjaRMM",
+      "ninjaone", 70, "NinjaOne",
+      "pulseway", 70, "Pulseway",
+      "zohoassist", 70, "Zoho Assist"
+  ];
+  DeviceProcessEvents
+  | where Timestamp > ago(24h)
+  | where Platform == "macOS" or tostring(AdditionalFields) contains "macOS"
+  | extend ProcessNameLower = tolower(FileName)
+  | extend ProcessPathLower = tolower(FolderPath)
+  | join kind=inner (
+      RMMProcessNames
+      | extend ProcessName = tolower(ProcessName)
+  ) on $left.ProcessNameLower == $right.ProcessName
+  | where DeviceName !in~ (ApprovedRMMHosts)
+  | where AccountName !in~ (ApprovedRMMAccounts)
+  | where not (
+      ProcessPathLower has "/library/application support/jamf" or
+      ProcessPathLower has "/usr/local/jamf" or
+      InitiatingProcessFileName =~ "mdmclient"
+  )
+  | summarize
+      EventCount = count(),
+      FirstSeen = min(Timestamp),
+      LastSeen = max(Timestamp),
+      CommandLines = make_set(ProcessCommandLine, 10),
+      ParentProcesses = make_set(InitiatingProcessFileName, 5),
+      ProcessPaths = make_set(FolderPath, 5)
+      by DeviceName, AccountName, FileName, ToolName, RiskScore, DeviceId
+  | extend TimespanMinutes = datetime_diff('minute', LastSeen, FirstSeen)
+  | extend AlertTitle = strcat("RMM Tool Detected: ", ToolName, " on macOS endpoint ")
+  | project
+      Timestamp = FirstSeen,
+      AlertTitle,
+      DeviceName,
+      AccountName,
+      FileName,
+      ToolName,
+      RiskScore,
+      ProcessPaths,
+      CommandLines,
+      ParentProcesses,
+      EventCount,
+      FirstSeen,
+      LastSeen,
+      TimespanMinutes,
+      DeviceId
+  | sort by RiskScore desc, EventCount desc
+
+falsepositives:
+  - Authorized IT helpdesk or MSP technicians using approved RMM tools (e.g., TeamViewer, AnyDesk) for legitimate remote support sessions - validate against IT change tickets or approved software inventory
+  - Enterprise-sanctioned device management solutions such as Jamf Pro remote control, Apple Remote Desktop, or Kaseya VSA deployed by the internal IT team for fleet management purposes
+  - Security operations or red team personnel running authorized RMM tooling during penetration testing engagements - cross-reference with scheduled assessment windows
+  - Software developers or QA engineers testing RMM client integrations as part of product development workflows on designated development endpoints
+level: high
