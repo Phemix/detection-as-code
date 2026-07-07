@@ -299,7 +299,7 @@ jobs:
             --status failure \
             --branch ${{ github.ref_name }} \
             --commit ${{ github.sha }}
-ai-review:
+  ai-review:
     name: AI Rule Review
     runs-on: ubuntu-latest
     needs: validate
