@@ -48,3 +48,4 @@ falsepositives:
   - Vendor-approved debugging sessions with documented approval ticket
 level: critical
 # test
+invalid_field: this will break validation

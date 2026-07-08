@@ -163,7 +163,7 @@ check-staleness-strict:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py --fail
 
 new-rule-ai:
-	@$(PYTHON) $(SCRIPTS)/new_rule_ai.py43ejhjlk;
+	@$(PYTHON) $(SCRIPTS)/new_rule_ai
 
 ai-debug:
 	@$(PYTHON) $(SCRIPTS)/ai_debug.py --job validate --dry-run
