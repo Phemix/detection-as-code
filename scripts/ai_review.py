@@ -39,36 +39,38 @@ ANSI_BOLD   = "\033[1m"
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 2048
 
-REVIEW_PROMPT = """You are a senior detection engineer reviewing a detection rule for a Detection-as-Code pipeline.
+REVIEW_PROMPT = REVIEW_PROMPT = """You are a senior detection engineer reviewing a detection rule for a Detection-as-Code pipeline.
 
-Review the following YAML detection rule and provide structured, actionable feedback.
+Review the following YAML detection rule and provide concise, actionable feedback.
 
 <rule>
 {rule_content}
 </rule>
 
-Provide your review in the following format:
+Provide your review in this exact format — keep the entire response under 350 words:
 
-## Detection Logic
-Analyze the SPL or KQL search block. Is the logic sound? Are there edge cases that could cause misses or false positives? Is the field selection appropriate for the data source?
+## Summary
+| Area | Finding | Priority |
+|------|---------|----------|
+| Detection Logic | one line finding | High/Medium/Low |
+| MITRE Mapping | one line finding | High/Medium/Low |
+| False Positives | one line finding | High/Medium/Low |
+| Test Coverage | one line finding | High/Medium/Low |
 
-## MITRE ATT&CK Mapping
-Does the MITRE technique mapping accurately reflect what the detection covers? Are there additional techniques or sub-techniques that should be included?
+## Top Issues
+List the 2-3 most critical issues only. One sentence each. Be specific to this rule.
 
-## False Positive Analysis
-Based on the falsepositives field and the search logic, what legitimate activity could trigger this rule? Are the existing exclusions sufficient? What additional NOT filters or conditions would improve precision?
-
-## Test Coverage
-Review the detection logic and assess what test cases should exist. Are there true positive scenarios not covered? Are there true negative (known-good) scenarios that should be explicitly tested?
-
-## Suggested Improvements
-Provide 2-3 specific, actionable improvements to the rule. Focus on detection quality, not style. Each suggestion should include the specific change to make.
+## Suggested Fix
+For the single highest priority issue, provide the specific change to make — code or field change, not generic advice.
 
 ## Overall Assessment
-Rate the rule: READY_FOR_PROMOTION, NEEDS_MINOR_WORK, or NEEDS_SIGNIFICANT_WORK
-Provide one sentence explaining the rating.
+READY_FOR_PROMOTION, NEEDS_MINOR_WORK, or NEEDS_SIGNIFICANT_WORK — one sentence explaining why.
 
-Keep feedback concise and technical. Avoid generic advice — be specific to this rule's logic and context."""
+Rules:
+- Be specific to this rule's logic, not generic advice
+- Prioritize actionable findings over comprehensive coverage
+- Skip sections where there are no significant issues
+- Never exceed 350 words total"""
 
 
 def load_rule(path: Path) -> tuple[dict | None, str]:
