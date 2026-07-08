@@ -2,11 +2,7 @@ title: LSASS Memory Dump via ProcDump or comsvcs.dll
 id: DET-00001
 type: detection
 status: experimental
-description: >
-  Detects attempts to dump LSASS memory using ProcDump with the -ma flag
-  or via comsvcs.dll MiniDump export. Both are common credential access
-  techniques used post-compromise to harvest plaintext credentials or NTLM hashes... added content
-author: Detection Engineering Team
+
 date: 2024-01-15
 modified: 2024-01-15
 mitre:
