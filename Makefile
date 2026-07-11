@@ -163,10 +163,21 @@ check-staleness-strict:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py --fail
 
 new-rule-ai:
-	@$(PYTHON) $(SCRIPTS)/new_rule_ai
+	@$(PYTHON) $(SCRIPTS)/new_rule_ai.py
 
 ai-debug:
 	@$(PYTHON) $(SCRIPTS)/ai_debug.py --job validate --dry-run
+
+ai-review-local:
+	@$(PYTHON) $(SCRIPTS)/ai_review.py \
+		--file rules/credential_access/lsass_memory_dump_procdump.yml \
+		--output terminal
+
+mcp:
+	@$(PYTHON) $(SCRIPTS)/mcp_server.py
+
+mcp-inspect:
+	npx @modelcontextprotocol/inspector python3 $(SCRIPTS)/mcp_server.py
 
 clean:
 	@rm -rf compiled/splunk
