@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dac-pipeline": {
+      "command": "python3",
+      "args": ["scripts/mcp_server.py"],
+      "cwd": "/Users/Oyinkansola-Olufemi/Downloads/dac-final"
+    }
+  }
+}
