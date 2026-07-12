@@ -46,7 +46,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install security scanning tools
-        run: pip install bandit pip-audit checkov
+        run: pip install bandit pip-audit checkov guarddog
 
       - name: Python SAST scan (Bandit)
         run: |
@@ -65,7 +65,13 @@ jobs:
             --progress-spinner off
         continue-on-error: false
 
-      # ── 4. Workflow Security (Checkov) ───────────────────────────────────
+      # ── 4. Supply Chain Scanning (GuardDog) ─────────────────────────────
+      - name: Supply chain scan (GuardDog)
+        run: |
+          guarddog pypi verify -r requirements.txt
+        continue-on-error: true
+
+      # ── 5. Workflow Security (Checkov) ───────────────────────────────────
       - name: GitHub Actions workflow scan (Checkov)
         run: |
           checkov -d .github/workflows/ \
