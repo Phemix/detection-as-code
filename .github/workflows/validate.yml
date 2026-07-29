@@ -68,6 +68,12 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: python scripts/validate.py
 
+      - name: Check rule journal updated (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          python scripts/check_journal_updated.py --base origin/${{ github.base_ref }}
+
       - name: Run rule tests (PR — changed rules only)
         if: github.event_name == 'pull_request'
         run: |

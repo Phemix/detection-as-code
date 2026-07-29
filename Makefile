@@ -3,7 +3,7 @@ SCRIPTS := scripts
 RULES_DIR := rules
 
 .DEFAULT_GOAL := help
-.PHONY: help install validate validate-strict validate-changed validate-staged compile compile-splunk inventory lint new-rule install-hooks test promote configure-alerts clean
+.PHONY: help install validate validate-strict validate-changed validate-staged compile compile-splunk inventory lint new-rule install-hooks test promote configure-alerts clean check-journal
 
 help:
 	@echo ""
@@ -27,6 +27,9 @@ help:
 	@echo "  make inventory            Generate RULES.md + rules_manifest.json"
 	@echo "  make lint                 YAML lint all rule files"
 	@echo "  make new-rule             Scaffold a new rule (interactive)"
+	@echo ""
+	@echo "  Journal:"
+	@echo "  make check-journal        Fail if changed rules lack a journal update"
 	@echo ""
 	@echo "  Deployment:"
 	@echo "  make configure-alerts     Wire alert actions on deployed Splunk rules"
@@ -161,6 +164,9 @@ check-staleness:
 
 check-staleness-strict:
 	@$(PYTHON) $(SCRIPTS)/check_staleness.py --fail
+
+check-journal:
+	@$(PYTHON) $(SCRIPTS)/check_journal_updated.py --base origin/main
 
 new-rule-ai:
 	@$(PYTHON) $(SCRIPTS)/new_rule_ai.py
