@@ -243,6 +243,34 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="check_journal",
+            description="Check whether rule changes since a base branch have matching journal/{rule_id}.md updates. Returns pass/fail and lists any rules missing a journal entry. Use this when the user asks if their rule changes are journaled or before opening a PR.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "base": {
+                        "type": "string",
+                        "description": "Base ref to diff against (default: main)"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_journal",
+            description="Get the journal content for a specific rule by ID — its origin, tuning history, known false positives, and review status. Use this when the user asks why a rule was created or how it's evolved.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "rule_id": {
+                        "type": "string",
+                        "description": "The rule ID in DET-NNNNN format (e.g. DET-00001)"
+                    }
+                },
+                "required": ["rule_id"]
+            }
+        ),
+        Tool(
             name="create_rule",
             description="Create a new detection rule scaffold with the given parameters. Returns the path to the created rule file. Use this when the user wants to create a new detection rule.",
             inputSchema={
@@ -293,6 +321,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return await _validate_rule(paths, arguments)
     elif name == "compile_rule":
         return await _compile_rule(paths, arguments)
+    elif name == "check_journal":
+        return await _check_journal(arguments)
+    elif name == "get_journal":
+        return await _get_journal(arguments)
     elif name == "create_rule":
         return await _create_rule(arguments)
     else:
@@ -607,6 +639,35 @@ async def _compile_rule(paths: list[Path], args: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Compile output:\n{output}")]
 
     return [TextContent(type="text", text=f"Rule {rule_id} not found.")]
+
+
+async def _check_journal(args: dict) -> list[TextContent]:
+    base = args.get("base", "main")
+    result = subprocess.run(
+        ["python3", str(ROOT / "scripts" / "check_journal_updated.py"), "--base", base],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT)
+    )
+    output = result.stdout + result.stderr
+    status = "PASSED" if result.returncode == 0 else "FAILED"
+    return [TextContent(type="text", text=f"Journal check {status} (base: {base}):\n\n{output}")]
+
+
+async def _get_journal(args: dict) -> list[TextContent]:
+    rule_id = args.get("rule_id", "").strip().upper()
+    if not rule_id:
+        return [TextContent(type="text", text="Please provide a rule_id (e.g. DET-00001)")]
+
+    journal_path = ROOT / "journal" / f"{rule_id}.md"
+    if not journal_path.exists():
+        return [TextContent(
+            type="text",
+            text=f"No journal found for {rule_id} at journal/{rule_id}.md.\n"
+                 f"Copy journal/rule-journal-template.md to create one."
+        )]
+
+    return [TextContent(type="text", text=journal_path.read_text())]
 
 
 async def _create_rule(args: dict) -> list[TextContent]:
